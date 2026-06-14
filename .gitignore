@@ -1,0 +1,20 @@
+# 虚拟环境（在新机器上重建，不传输）
+.venv/
+__pycache__/
+*.pyc
+
+# output 整体不入库：全部可由 01-07 确定性再生，且 dataset jsonl 含机器相关绝对路径
+output/
+
+# 不属于本项目（独立的 scoping review 论文，含版权 PDF）/ 旧重复目录
+scoping_review/
+research_design/
+
+# 训练产物（未来）
+training_data/
+checkpoints/
+*.safetensors
+wandb/
+
+# 系统文件
+.DS_Store
