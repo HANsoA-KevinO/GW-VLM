@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import (
     CHIRP_MASS_BINS,
     CHI_EFF_BINS,
+    DETECTORS,
     DISTANCE_BINS,
     OUTPUT_DIR,
     SPECTROGRAMS_DIR,
@@ -97,6 +98,8 @@ def build_dataset() -> list[dict]:
         if m:
             event_name = m.group("event")
             ifo = m.group("ifo")
+            if ifo not in DETECTORS:  # 尊重 config.DETECTORS（如 V1 已排除则磁盘有 V1 PNG 也不入库）
+                continue
             kind = m.group("kind")
             j_idx = int(m.group("j")) if m.group("j") else 0
             event = events.get(event_name)
@@ -125,6 +128,8 @@ def build_dataset() -> list[dict]:
         if m:
             inject_id = m.group("id")
             ifo = m.group("ifo")
+            if ifo not in DETECTORS:
+                continue
             meta_path = png.with_suffix(".json")
             if not meta_path.exists():
                 unmatched.append(f"{png.name}: missing inject metadata json")
@@ -147,6 +152,8 @@ def build_dataset() -> list[dict]:
         if m:
             glitch_id = m.group("id")
             ifo = m.group("ifo")
+            if ifo not in DETECTORS:
+                continue
             meta_path = png.with_suffix(".json")
             meta = {}
             if meta_path.exists():
