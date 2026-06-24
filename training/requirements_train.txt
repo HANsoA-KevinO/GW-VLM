@@ -1,0 +1,19 @@
+# GW-VLM 训练依赖（DGX Spark：ARM64 + Blackwell GPU）。建议 Python 3.12 venv。
+#
+# 注意：torch / torchvision 不要用本文件 pip 盲装——DGX Spark 需要 NVIDIA 提供的
+# CUDA(Blackwell sm_121) 专用 wheel。优先用 Spark 自带容器/镜像里的 torch，或按
+# https://docs.unsloth.ai/basics/fine-tuning-llms-with-nvidia-dgx-spark-and-unsloth 安装。
+# 确认 `python -c "import torch; print(torch.cuda.is_available())"` 为 True 后再装下列：
+
+unsloth
+trl>=0.12
+peft
+transformers>=4.49
+accelerate
+datasets
+pillow
+bitsandbytes
+pyyaml
+scikit-learn      # evaluation/ 用
+matplotlib        # 混淆矩阵图
+wandb             # 可选；report_to=none 时无需登录

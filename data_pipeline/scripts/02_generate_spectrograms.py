@@ -42,9 +42,11 @@ JITTER_OFFSETS = [-0.5, -0.25, 0.0, 0.25, 0.5, -1.0, -0.75, 0.75, 1.0]
 NEG_TIME_OFFSETS = [-10.0, -5.0, 0.0, 5.0, 10.0, -20.0, -15.0, 15.0, 20.0]
 
 
-def render_qtransform(strain: TimeSeries, center_gps: float, out_path: Path) -> None:
+def render_qtransform(strain: TimeSeries, center_gps: float, out_path: Path,
+                      cmap: str = "gray") -> None:
     """从一段 strain 中以 center_gps 为中心切显示窗口，对齐 GWOSC quickview 流程：
     直接调 q_transform，由其内置 whitening 处理；输入整段 strain 提供 PSD 估计基底。
+    cmap：'gray'（默认，灰度单通道）或 'viridis' 等（彩色三通道）。固定 vmin0/vmax25.5 不变。
     """
     half_window = WINDOW_SECONDS / 2.0
     win_start = center_gps - half_window
@@ -69,7 +71,7 @@ def render_qtransform(strain: TimeSeries, center_gps: float, out_path: Path) -> 
         aspect="auto",
         origin="lower",
         extent=[float(qt.xindex[0].value), float(qt.xindex[-1].value), FREQ_RANGE[0], FREQ_RANGE[1]],
-        cmap="gray",
+        cmap=cmap,
         interpolation="nearest",
         vmin=0,
         vmax=25.5,
@@ -82,13 +84,15 @@ def render_qtransform(strain: TimeSeries, center_gps: float, out_path: Path) -> 
     fig.savefig(out_path, format="png", dpi=IMAGE_SIZE // 8, pad_inches=0)
     plt.close(fig)
 
-    img = Image.open(out_path).convert("L")
+    mode = "L" if cmap == "gray" else "RGB"   # 彩色保存为 RGB 三通道
+    img = Image.open(out_path).convert(mode)
     if img.size != (IMAGE_SIZE, IMAGE_SIZE):
         img = img.resize((IMAGE_SIZE, IMAGE_SIZE), Image.LANCZOS)
-        img.save(out_path, format="PNG")
+    img.save(out_path, format="PNG")
 
 
-def process_event_detector(event: dict, ifo: str, jitter: bool) -> None:
+def process_event_detector(event: dict, ifo: str, jitter: bool,
+                           out_dir: Path = SPECTROGRAMS_DIR, cmap: str = "gray") -> None:
     name = event["name"]
     gps = event["gps"]
     neg_offset = event["negative_offset"]
@@ -108,11 +112,11 @@ def process_event_detector(event: dict, ifo: str, jitter: bool) -> None:
         targets = [("pos", gps), ("neg", gps - neg_offset)]
 
     for label, center in targets:
-        out_path = SPECTROGRAMS_DIR / f"{name}_{ifo}_{label}.png"
+        out_path = out_dir / f"{name}_{ifo}_{label}.png"
         if out_path.exists():
             continue
         try:
-            render_qtransform(strain, center, out_path)
+            render_qtransform(strain, center, out_path, cmap=cmap)
             print(f"  [ok]   {out_path.name}")
         except Exception as exc:
             print(f"  [fail] {out_path.name}: {exc.__class__.__name__}: {exc}")
@@ -123,7 +127,10 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--poc", action="store_true", help="5 PoC 事件，每事件每探测器 2 图")
     group.add_argument("--full", action="store_true", help="全量事件 + 5 jitter（默认）")
+    parser.add_argument("--cmap", default="gray", help="色图：gray(默认) / viridis / ...")
+    parser.add_argument("--outdir", default=None, help="输出目录(默认 output/spectrograms)")
     args = parser.parse_args()
+    out_dir = Path(args.outdir) if args.outdir else SPECTROGRAMS_DIR
 
     if args.poc:
         events = POC_EVENTS
@@ -134,15 +141,15 @@ def main() -> None:
         jitter = True
         mode = f"FULL ({len(events)} events, 10 imgs/event/ifo)"
 
-    SPECTROGRAMS_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"Mode: {mode}")
-    print(f"Output: {SPECTROGRAMS_DIR}\n")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Mode: {mode}  |  cmap={args.cmap}")
+    print(f"Output: {out_dir}\n")
 
     for event in events:
         snr_str = f"SNR ~{event['snr']}" if event.get("snr") is not None else "SNR n/a"
         print(f"=== {event['name']} ({event['kind']}, {snr_str}) ===")
         for ifo in DETECTORS:
-            process_event_detector(event, ifo, jitter=jitter)
+            process_event_detector(event, ifo, jitter=jitter, out_dir=out_dir, cmap=args.cmap)
         print()
 
 

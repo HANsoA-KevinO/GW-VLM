@@ -16,5 +16,9 @@ checkpoints/
 *.safetensors
 wandb/
 
+# 论文 PDF（版权 + 体积大，~287MB）：只入库索引/清单/下载脚本，PDF 用 docs/papers/download.sh 复现
+docs/papers/*/
+docs/papers/*.pdf
+
 # 系统文件
 .DS_Store

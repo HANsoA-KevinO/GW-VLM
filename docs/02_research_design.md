@@ -123,9 +123,11 @@
 | Stage | 硬件 | 模型 | 训练精度 | 用途 |
 |---|---|---|---|---|
 | Stage 0 ✅ | Mac | 无 | 无 | 数据 PoC（已完成） |
-| **Stage 1** | RTX 5090 (32GB) | Qwen3-VL-8B | bf16 LoRA | 4 路 × 4 测试场景共 16 组实验筛选 |
-| **Stage 2** | DGX Spark (128GB) | Qwen3.6-27B Dense | bf16 LoRA | Stage 1 选出最佳 1-2 路精度版（论文主表数据） |
+| **调试** | DGX Spark (`spark-91b6.local`) | Qwen3-VL-8B / **Gemma 4 E4B** | bf16/QLoRA | 跑通链路、4 路快速筛选 |
+| **Stage 2** | DGX Spark (128GB) | Qwen3.6-27B Dense / **Gemma 4 31B Dense** | bf16 LoRA | 主表数据（最佳 1-2 路精度版）|
 | **Stage 3 (可选)** | DGX Spark (128GB) | Qwen3.6-35B-A3B (MoE) | bf16 LoRA | T4 内部 Dense vs MoE 对照 |
+
+> **第二模型族 Gemma 4（2026-06-15 纳入）**：Google 开源原生多模态（Apache 2.0）。主对比 **Gemma 4 31B Dense**（对位 Qwen3.6-27B），调试用 **E4B**。论文叙事扩为三方对比：Qwen3-VL（vision-encoder/DeepStack）vs Qwen3.6（原生多模态）vs Gemma 4（另一开源原生多模态族，12B 变体为"编码器无关"统一架构）。微调细节见 `docs/03_gemma4_investigation.md`。框架统一用 **Unsloth**。
 
 ### 3.2 关键技术选择
 
@@ -317,7 +319,7 @@ E4 (本: 注入+det+param) …        …            …        …
 
 | 周 | 任务 | 输出 |
 |---|---|---|
-| W1 ✅ | Stage 1 数据 pipeline（90 事件全量 H1+L1 + OFF-source，jitter 9/9）| 训练数据完整（2884 train）|
+| W1 ✅ | Stage 1 数据 pipeline（90 事件全量 H1+L1 + OFF-source，jitter 9/9）| 训练数据完整（2394 train / 306 val / 270 test，排除 V1 后口径）|
 | W2 | 5090 环境 + Qwen3-VL-8B 微调 pipeline | E1 跑通 |
 | W3 | 跑完 E1-E4 4 路 × 内置 clean test | Stage 1 主表 |
 | W4 | MLGWSC-1 DS4 生成 + 适配 + baseline CNN | 场景 2 数据 + T2 baseline |
@@ -418,3 +420,12 @@ GW-VLM/
 | **Li 2026 弃用** | **全面移除**：经审查发现其过采样复制 + 切分泄露导致 97.4% 不可信；不引用/不作 baseline/不作设计依据 | 2026-06-02 |
 | MLGWSC-1 适配 | DS4（real O3a 噪声）作额外测试集；2048→4096Hz 升采样 + 滑窗 + 自跑 q_transform；评估用其 evaluate.py 出 sensitive-distance vs FAR | 2026-06-02 |
 | 探测器处理认知 | 确认 LIGO 工程 + 主流 spectrogram-ML 均单探测器独立处理；G2Net 三通道堆叠仅 Kaggle 便利设计，非社区标准；我们方案 A 与 LIGO 论文图一致 | 2026-06-02 |
+| 数据集口径修正 | 排除 V1 重生：train/val/test = 2884/366/330 → **2394/306/270**（共 2970，正/负各 1485）| 2026-06-15 |
+| **纳入 Gemma 4 对比族** | Google 开源原生多模态；主对比 31B Dense（对位 Qwen3.6-27B）+ 调试 E4B；框架 Unsloth；详见 docs/03 | 2026-06-15 |
+| 训练机 | 训练统一在 **DGX Spark**（`spark-91b6.local`，128GB）；不再依赖 RTX 5090 | 2026-06-15 |
+| **评估口径** | 主指标用 **ROC-AUC + PR-AUC + FAR(FPR≤5%)工作点**；贪心 0.5-阈值 accuracy 会严重低估 recall，仅作参考 | 2026-06-17 |
+| **主模型 LoRA 配方** | 实测保守设置(r8/lr5e-5/batch16)欠拟合；改 **r32/α32/lr2e-4/dropout0/有效batch8** 后 31B ROC-AUC 0.858→0.922 | 2026-06-17 |
+| **输入分辨率** | Unsloth 默认 512px 偏低；改 Gemma4 token 预算 **560(≈1135px)** 吃满 1024 源（`image_tokens` 配置）| 2026-06-17 |
+| 检测瓶颈认定 | 漏检集中在**低 SNR 弱信号**(efficiency vs SNR：<8 56% → 12-20 88%)；调色/位深无效，提升靠注入(E3/E4)或接受 SNR 下限 | 2026-06-17 |
+
+> 📋 E1 完整训练/评估/诊断记录 → [`04_e1_experiments_and_findings.md`](04_e1_experiments_and_findings.md)。

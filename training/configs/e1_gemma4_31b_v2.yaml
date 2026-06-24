@@ -1,0 +1,30 @@
+# Gemma 4 31B Dense — E1 调参版(治欠拟合：对齐 E4B 已验证有效的 LoRA 设置)
+# 与基线 e1_gemma4_31b.yaml 的区别：rank 8→32, alpha 16→32, lr 5e-5→2e-4, dropout 0.1→0
+# 依据：Unsloth 超参指南(rank16-32平衡/lr2e-4默认/dropout0) + Thinking Machines(容量+高lr)
+model_id: unsloth/gemma-4-31B-it
+chat_template: gemma-4
+load_in_4bit: false
+bf16: true
+device_map: {"": 0}     # GB10 统一内存：强制全放 cuda:0
+
+data_dir: output/training_data/e1
+image_root: output/spectrograms
+output_dir: output/runs/e1_gemma4_31b_v2
+
+# —— 调参核心 ——
+lora_r: 32
+lora_alpha: 32          # =r，1/r 缩放下 scale=1，对齐 E4B
+lora_dropout: 0.0
+finetune_vision_layers: true
+finetune_language_layers: true
+
+max_seq_length: 2048
+batch_size: 2           # 利用 128G 显存（smoke 验证不 OOM）
+grad_accum: 4           # 有效 batch = 2×4 = 8（对齐 E4B；比基线 16 减半，更新更勤）
+epochs: 3               # 快测/ smoke 时用 --epochs 1 覆盖
+learning_rate: 2.0e-4
+seed: 42
+report_to: none
+
+# 输入分辨率：Gemma4 token 预算 560 ≈ ~1135px，吃满 1024 源（默认 512 兜底偏低）
+image_tokens: 560

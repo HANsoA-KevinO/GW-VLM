@@ -1,0 +1,23 @@
+# Qwen3-VL-8B — E1（纯检测）调试（QLoRA）
+model_id: unsloth/Qwen3-VL-8B-Instruct   # 原版：Qwen/Qwen3-VL-8B-Instruct
+chat_template: null                       # Qwen 系列 Unsloth 自动处理模板
+load_in_4bit: true
+bf16: true
+
+data_dir: output/training_data/e1
+image_root: output/spectrograms
+output_dir: output/runs/e1_qwen3vl_8b
+
+lora_r: 16
+lora_alpha: 16
+lora_dropout: 0.05
+finetune_vision_layers: true
+finetune_language_layers: true
+
+max_seq_length: 2048
+batch_size: 2
+grad_accum: 4
+epochs: 3
+learning_rate: 2.0e-4
+seed: 42
+report_to: none

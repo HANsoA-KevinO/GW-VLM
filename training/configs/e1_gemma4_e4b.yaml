@@ -1,0 +1,24 @@
+# Gemma 4 E4B — E1（纯检测）调试 / 跑通链路用（QLoRA ~10GB，首个验证模型）
+model_id: unsloth/gemma-4-E4B-it      # 原版：google/gemma-4-E4B-it
+chat_template: gemma-4
+load_in_4bit: true
+bf16: true                            # Spark Blackwell 支持 bf16 计算
+
+data_dir: output/training_data/e1
+image_root: output/spectrograms       # 可被 --image-root 覆盖（Spark 上传 ~/GW-VLM/output/spectrograms）
+output_dir: output/runs/e1_gemma4_e4b
+
+# 视觉 LoRA：Unsloth 推荐视觉微调用 r=alpha=32
+lora_r: 32
+lora_alpha: 32
+lora_dropout: 0.0
+finetune_vision_layers: true
+finetune_language_layers: true
+
+max_seq_length: 2048
+batch_size: 2
+grad_accum: 4
+epochs: 1                             # 验证链路用 1 epoch；正式跑改 3
+learning_rate: 2.0e-4
+seed: 42
+report_to: none

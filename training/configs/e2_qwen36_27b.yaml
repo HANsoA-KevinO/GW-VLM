@@ -1,0 +1,28 @@
+# Qwen3.6-27B Dense — E2（检测 + 物理参数 bin 多任务）主对比（bf16 LoRA，DGX Spark 128GB）
+# 沿用 E1 最佳模型(Qwen3.6-27B, ROC-AUC 0.940)+ 获胜配方;仅把数据换成 e2(多任务)。
+model_id: unsloth/Qwen3.6-27B
+chat_template: null
+load_in_4bit: false
+bf16: true
+device_map: {"": 0}
+
+data_dir: output/training_data/e2            # 多任务: detection + chirp_mass/distance/chi_eff bin
+image_root: output/spectrograms              # 实跑用 --image-root 覆盖为 spectrograms_viridis
+output_dir: output/runs/e2_qwen36_27b_viridis
+
+# 获胜配方(与 E1 一致)
+lora_r: 32
+lora_alpha: 32
+lora_dropout: 0.0
+finetune_vision_layers: true
+finetune_language_layers: true
+
+max_seq_length: 2048        # E2 输出更长(4 字段)但仍远小于图像 token,2048 足够
+batch_size: 2
+grad_accum: 4               # 有效 batch 8
+epochs: 3
+learning_rate: 2.0e-4
+seed: 42
+report_to: none
+# image_tokens 对 Qwen 跳过(原生动态分辨率);保留键以兼容,训练 collator 仍用 resize=max
+image_tokens: 560

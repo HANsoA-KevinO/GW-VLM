@@ -1,0 +1,25 @@
+# Gemma 4 31B Dense — E1（纯检测）主对比（bf16 LoRA，DGX Spark 128GB）
+model_id: unsloth/gemma-4-31B-it      # 原版：google/gemma-4-31B-it
+chat_template: gemma-4
+load_in_4bit: false
+bf16: true
+device_map: {"": 0}     # GB10 统一内存：强制全放 cuda:0，避免 auto/sequential 误 offload 到 CPU
+
+data_dir: output/training_data/e1
+image_root: output/spectrograms
+output_dir: output/runs/e1_gemma4_31b
+
+# 主实验 LoRA（docs/02 §3.2）
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.1
+finetune_vision_layers: true
+finetune_language_layers: true
+
+max_seq_length: 2048
+batch_size: 1
+grad_accum: 16
+epochs: 3
+learning_rate: 5.0e-5
+seed: 42
+report_to: none
