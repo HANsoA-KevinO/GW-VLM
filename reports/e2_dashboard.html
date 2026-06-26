@@ -1,0 +1,248 @@
+<!DOCTYPE html><html lang="zh"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GW-VLM · E2 多任务结果分析</title>
+<style>
+  :root { --purple:#440154; --indigo:#3b528b; --teal:#21918c; --green:#5ec962; --yellow:#fde725;
+    --ink:#1a1a2e; --muted:#6b7280; --line:#e7e7ee; --bg:#f6f6fb; --card:#fff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif; color:var(--ink); background:var(--bg); line-height:1.6; }
+  .mono { font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:.85em; }
+  header.hero { background:linear-gradient(120deg,var(--purple),var(--indigo) 50%,var(--teal) 85%,var(--green)); color:#fff; padding:48px 24px 40px; text-align:center; }
+  header.hero h1 { margin:0 0 6px; font-size:1.9rem; }
+  header.hero p { margin:3px 0; opacity:.92; }
+  .hero .pills { margin-top:14px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  .hero .pill { background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.35); padding:6px 16px; border-radius:999px; font-size:.9rem; }
+  main { max-width:1120px; margin:0 auto; padding:0 20px 64px; }
+  .section-title { font-size:1.3rem; margin:40px 0 14px; padding-left:12px; border-left:5px solid var(--teal); }
+  .panel { background:var(--card); border-radius:16px; padding:20px; box-shadow:0 4px 18px rgba(20,20,50,.06); margin:14px 0; }
+  .panel h3 { margin:0 0 4px; font-size:1.05rem; } .panel .cap { color:var(--muted); font-size:.85rem; margin-bottom:8px; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; }
+  .chips { display:flex; flex-wrap:wrap; gap:10px; }
+  .chip { background:#f1f5f9; border-radius:10px; padding:8px 14px; display:flex; flex-direction:column; }
+  .chip span { color:var(--muted); font-size:.74rem; } .chip b { font-size:1.05rem; }
+  .insight { background:linear-gradient(90deg,rgba(94,201,98,.12),rgba(253,231,37,.08)); border-left:4px solid var(--teal); border-radius:10px; padding:12px 16px; margin:12px 0; font-size:.95rem; }
+  table.op { width:100%; border-collapse:collapse; font-size:.88rem; }
+  table.op th,table.op td { padding:8px 10px; border-bottom:1px solid var(--line); text-align:right; }
+  table.op th:first-child,table.op td:first-child { text-align:left; } table.op thead th { color:var(--muted); font-size:.78rem; }
+  .pgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:16px; }
+  .pcard { background:var(--card); border-radius:14px; padding:16px; box-shadow:0 3px 12px rgba(20,20,50,.05); }
+  .pcard h4 { margin:0 0 8px; } .pmetrics { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:8px; }
+  .pmetrics .m { display:flex; flex-direction:column; } .pmetrics b { font-size:1.1rem; } .pmetrics i { font-style:normal; color:var(--muted); font-size:.72rem; }
+  .sub { color:var(--muted); }
+  .svg-host svg { width:100%; height:auto; display:block; }
+  .tcard { background:var(--card); border-radius:12px; padding:12px 14px; margin:10px 0; box-shadow:0 2px 8px rgba(20,20,50,.05); }
+  .thead { font-size:.85rem; color:#374151; margin-bottom:6px; }
+  .treason { white-space:pre-wrap; font-size:.82rem; color:#374151; background:#fbfbfe; border:1px solid var(--line); border-radius:8px; padding:10px; max-height:220px; overflow:auto; margin:0; font-family:-apple-system,"PingFang SC",sans-serif; }
+  footer { text-align:center; color:var(--muted); font-size:.85rem; padding:28px 20px; }
+  .tip { position:fixed; pointer-events:none; background:rgba(26,26,46,.94); color:#fff; padding:5px 9px; border-radius:6px; font-size:.78rem; opacity:0; transition:opacity .1s; z-index:50; }
+</style></head>
+<body>
+<header class="hero">
+  <h1>GW-VLM · E2 多任务结果分析</h1>
+  <p>Qwen3.6-27B · 检测 + 物理参数(chirp mass / distance / χ_eff)· viridis · 270 测试样本</p>
+  <div class="pills">
+    <div class="pill">检测 ROC-AUC <b>0.959</b></div>
+    <div class="pill">distance 精确 <b>37.0%</b>(随机20.0%)</div>
+    <div class="pill">生成式 recall <b>113/135</b></div>
+  </div>
+</header>
+<main>
+  <h2 class="section-title">① 检测</h2>
+  <div class="panel"><div class="chips">
+    <div class="chip"><span>ROC-AUC</span><b style="color:var(--teal)">0.9594</b></div>
+    <div class="chip"><span>PR-AUC</span><b>0.9521</b></div>
+    <div class="chip"><span>Recall@0.5</span><b>84.4%</b></div>
+    <div class="chip"><span>Precision@0.5</span><b>92.7%</b></div>
+    <div class="chip"><span>vs E1 单检测</span><b>0.940 → 0.959</b></div>
+  </div>
+  <div class="insight">多任务(加参数预测)<b>没有拖累检测、反而略升</b>(0.940→0.959)——辅助任务起了正则作用。</div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><h3>ROC 曲线</h3><div class="cap">TPR vs FPR,左上角越靠越好</div><div class="svg-host" id="roc"></div></div>
+    <div class="panel"><h3>Recall / Precision vs 阈值</h3><div class="cap">绿=recall 橙=precision,灰虚线=0.5</div><div class="svg-host" id="sweep"></div></div>
+  </div>
+  <div class="panel"><h3>工作点</h3><table class="op"><thead><tr><th>工作点</th><th>阈值</th><th>Acc</th><th>Precision</th><th>Recall</th><th>FPR</th></tr></thead><tbody id="ops"></tbody></table></div>
+
+  <h2 class="section-title">② 物理参数(核心:看"输出安全众数 bin"的塌缩)</h2>
+  <div class="insight">
+    <b>关键发现:</b>模型倾向输出每个参数的"安全众数 bin",而非真正按图预测——
+    <b>chirp mass 几乎只输出 25-40 一档(众数塌缩,≈随机)</b>;
+    <b>distance 用了远端两档、偏向"远"但有真实区分(2.2×随机)</b>;
+    <b>χ_eff 塌向 0.0-0.2(近零自旋先验)</b>。混淆矩阵按行(gold)归一化着色,看每个真实 bin 的预测都流向了哪。
+  </div>
+  <div class="pgrid"><div class="pcard">
+      <h4>Chirp Mass (质量)</h4>
+      <div class="pmetrics">
+        <span class="m"><b style="color:#b91c1c">20.0%</b><i>精确</i></span>
+        <span class="m"><b>23.9%</b><i>条件精确</i></span>
+        <span class="m"><b>70.4%</b><i>邻接±1</i></span>
+        <span class="m"><b class="sub">20.0%</b><i>随机基线</i></span>
+      </div>
+      <div class="svg-host" data-cm="chirp_mass_bin"></div>
+      <div class="svg-host" data-dist="chirp_mass_bin"></div>
+    </div><div class="pcard">
+      <h4>Distance (距离)</h4>
+      <div class="pmetrics">
+        <span class="m"><b style="color:#127a4e">37.0%</b><i>精确</i></span>
+        <span class="m"><b>44.2%</b><i>条件精确</i></span>
+        <span class="m"><b>65.9%</b><i>邻接±1</i></span>
+        <span class="m"><b class="sub">20.0%</b><i>随机基线</i></span>
+      </div>
+      <div class="svg-host" data-cm="distance_bin"></div>
+      <div class="svg-host" data-dist="distance_bin"></div>
+    </div><div class="pcard">
+      <h4>χ_eff (有效自旋)</h4>
+      <div class="pmetrics">
+        <span class="m"><b style="color:#b91c1c">22.2%</b><i>精确</i></span>
+        <span class="m"><b>26.6%</b><i>条件精确</i></span>
+        <span class="m"><b>83.0%</b><i>邻接±1</i></span>
+        <span class="m"><b class="sub">33.3%</b><i>随机基线</i></span>
+      </div>
+      <div class="svg-host" data-cm="chi_eff_bin"></div>
+      <div class="svg-host" data-dist="chi_eff_bin"></div>
+    </div></div>
+
+  <h2 class="section-title">③ 损失曲线(E2 训练,对数纵轴)</h2>
+  <div class="panel"><div class="svg-host" id="loss"></div></div>
+
+  <h2 class="section-title">④ 思考诊断:为什么开 thinking 会把检测打崩</h2>
+  <div class="insight">
+    带【思考】自由生成时,正样本 <b>58/60</b> 被判 NO(生成式 recall≈0);而 teacher-forced(不思考)ROC-AUC 0.959。
+    原因:思考套用"真信号=明亮 chirp 脊"的强信号先验,而我们的真信号大多不是亮线 → 把不思考时能用的亚感知证据"推理掉了"。下面是模型推理原文样本(绿=判YES、红=判NO):
+  </div>
+  <div class="tcard">
+      <div class="thead">GOLD(质量/距离): <b>15-25 / 800-1600</b> · 思考后判定 <b style="color:#127a4e">YES</b> · 1024tok</div>
+      <pre class="treason">The user wants me to analyze a Q-transform time-frequency spectrogram from LIGO/Virgo strain data.
+1.  **Analyze the image:** I need to look for a "chirp" signal, which appears as a vertical or slightly diagonal yellow/white line in the time-frequency domain. The background is typically blue/purple (low Q values).
+2.  **Scan the spectrogram:** Looking at the provided image, I see a very distinct, bright yellow vertical line near the center-right.
+    *   Time axis (x-axis): It's located around the middle, maybe slightly to the right. Let's estimate the time. The ticks are not labeled with numbers, but I can see the relative position. It's roughly in the middle.
+    *   Frequency axis (y-axis): The line starts low and goes high. Wait, looking closely at the specific line.
+    *   Let's re-examine the image carefully.
+    *   There is a very prominent, bright yellow vertical line. It seems to span from a low frequency up to a high frequency. Wait, no, looking at the Q-transform, a Q-transform usually has time on the x-axis and frequency on the y-axis.
+    *   Let's look at the specific features.
+    *   There is a bright yellow line at a specific time. It looks like a vertical line. In Q-transforms, a Q-transform output $Q(t, f)$ is plotted. A gravitational wave signal appears as a ridge.
+    *   Let's look at the "chirp" shape. A chirp goes from low frequency to high frequency o</pre>
+    </div><div class="tcard">
+      <div class="thead">GOLD(质量/距离): <b>15-25 / 800-1600</b> · 思考后判定 <b style="color:#127a4e">YES</b> · 1024tok</div>
+      <pre class="treason">The user wants me to analyze a Q-transform time-frequency spectrogram from LIGO/Virgo strain data.
+1.  **Analyze the image:** I need to look for a "chirp" signal, which appears as a vertical or slightly diagonal yellow/green line in the time-frequency domain. The background is typically blue/purple (low Q values).
+2.  **Scan the spectrogram:** Looking at the provided image, I see a very distinct, bright yellow vertical line near the center-right.
+    *   Time axis (x-axis): It's located around the middle, maybe slightly to the right. Let's estimate the time. The ticks are not labeled with numbers, but I can see the relative position. It's roughly in the middle.
+    *   Frequency axis (y-axis): The line starts low and goes high. Wait, looking closely at the specific line.
+    *   Let's re-examine the image carefully.
+    *   There is a very bright yellow vertical line. It seems to span from a low frequency up to a high frequency.
+    *   Actually, looking at the Q-transform, a Q-transform usually has time on the x-axis and frequency on the y-axis.
+    *   The bright yellow line is located at a specific time. Let's look at the y-axis (frequency). The line goes from roughly 20-30 Hz up to maybe 100-150 Hz? No, let's look at the color scale. Yellow is high Q.
+    *   The line is very distinct. It's a vertical line. Wait, gravitational waves are chirps, so they should be diagonal (f</pre>
+    </div><div class="tcard">
+      <div class="thead">GOLD(质量/距离): <b>15-25 / 800-1600</b> · 思考后判定 <b style="color:#b91c1c">NO</b> · 446tok</div>
+      <pre class="treason">The user wants me to analyze a Q-transform time-frequency spectrogram from LIGO/Virgo strain data.
+1.  **Analyze the image:** I need to look for a "chirp" signal, which appears as a vertical or slightly diagonal yellow/green line in the time-frequency domain. The background is typically blue/purple (low Q values).
+2.  **Scan the spectrogram:** Looking at the provided image, I see a mostly uniform blue/purple background. There are some very faint, scattered yellow/green pixels, but no distinct, coherent vertical line that would indicate a gravitational wave signal. The Q values seem very low across the board, mostly in the dark blue range. There is no significant time-frequency ridge.
+3.  **Determine detection:** Since there is no clear signal, the detection is "NO".
+4.  **Format output:** The output must be a JSON object. Since detection is "NO", the other fields should be "N/A".
+
+Wait, let me look closer. Is there a very faint signal?
+- Scanning across the time axis (x-axis) and frequency axis (y-axis).
+- The y-axis labels are not visible, but typically it's log frequency.
+- The x-axis is time.
+- I see a few isolated yellow pixels, but they don't form a Q-transform time-frequency ridge. A Q-transform for a Q-transform usually shows a distinct "chirp" line. Here, the data looks like pure noise. The Q values are consistently low (dark blue). There is no significant time-frequenc</pre>
+    </div><div class="tcard">
+      <div class="thead">GOLD(质量/距离): <b>15-25 / 800-1600</b> · 思考后判定 <b style="color:#b91c1c">NO</b> · 446tok</div>
+      <pre class="treason">The user wants me to analyze a Q-transform time-frequency spectrogram from LIGO/Virgo strain data.
+1.  **Analyze the image:** I need to look for a "chirp" signal, which appears as a vertical or slightly diagonal yellow/green line in the time-frequency domain. The background is typically blue/purple (low Q values).
+2.  **Scan the spectrogram:** Looking at the provided image, I see a mostly uniform blue/purple background. There are some very faint, scattered yellow/green pixels, but no distinct, coherent vertical line that would indicate a gravitational wave signal. The Q values seem very low across the board, mostly in the dark blue range. There is no significant time-frequency ridge.
+3.  **Determine detection:** Since there is no clear signal, the detection is "NO".
+4.  **Format output:** The output must be a JSON object. Since detection is "NO", the other fields should be "N/A".
+
+Wait, let me look closer. Is there a very faint signal?
+- Scanning across the time axis (x-axis) and frequency axis (y-axis).
+- The y-axis labels are not visible, but typically it's log frequency.
+- The x-axis is time.
+- I see a few isolated yellow pixels, but they don't form a Q-transform time-frequency ridge. A Q-transform for a Q-transform usually shows a distinct "chirp" line. Here, the data looks like pure noise. The Q values are extremely low (dark blue). There is no significant time-frequency s</pre>
+    </div><div class="tcard">
+      <div class="thead">GOLD(质量/距离): <b>15-25 / 800-1600</b> · 思考后判定 <b style="color:#b91c1c">NO</b> · 403tok</div>
+      <pre class="treason">The user wants me to analyze a Q-transform time-frequency spectrogram from LIGO/Virgo strain data.
+1.  **Analyze the image:** I need to look for a "chirp" signal, which appears as a vertical or slightly diagonal yellow/green line in the time-frequency domain. The background is typically blue/purple (low Q values).
+2.  **Scan the spectrogram:** Looking at the provided image, I see a mostly uniform blue/purple background. There are some very faint, scattered yellow/green pixels, but no distinct, coherent vertical line that would indicate a gravitational wave signal. The Q values seem very low across the board, mostly in the dark blue range. There is no significant time-frequency ridge.
+3.  **Determine detection:** Since there is no clear signal, the detection is "NO".
+4.  **Format output:** The output must be a JSON object. Since detection is "NO", the other fields should be "N/A".
+
+Wait, let me look closer. Is there a faint signal?
+- Around the middle, there are some slightly brighter pixels, but they look like noise fluctuations.
+- There isn't a sustained Q-value increase over time.
+- The overall Q values are very low (dark blue). A signal would typically show Q values &gt; 5-10, appearing yellow or white. Here, the brightest spots are barely light blue/green.
+- Conclusion remains: NO.
+
+Therefore, the output should be:
+{"detection": "NO", "chirp_mass_bin": "N/A", "distance_bin": "</pre>
+    </div>
+
+  <footer>GW-VLM E2 多任务 · 全部图表由实际数据原生渲染 · 数据:output/runs/e2_qwen36_27b_viridis/</footer>
+</main>
+<div class="tip" id="tip"></div>
+<script>
+const D={"roc": [[0.0, 0.0], [0.0, 0.0074], [0.0, 0.0148], [0.0, 0.0222], [0.0, 0.0296], [0.0, 0.037], [0.0, 0.0444], [0.0, 0.0519], [0.0, 0.0593], [0.0, 0.0667], [0.0, 0.0741], [0.0, 0.0815], [0.0, 0.0889], [0.0, 0.0963], [0.0, 0.1037], [0.0, 0.1111], [0.0, 0.1185], [0.0, 0.1259], [0.0, 0.1333], [0.0, 0.1407], [0.0074, 0.1407], [0.0074, 0.1481], [0.0074, 0.1556], [0.0074, 0.163], [0.0074, 0.1704], [0.0074, 0.1778], [0.0074, 0.1852], [0.0074, 0.1926], [0.0074, 0.2], [0.0074, 0.2074], [0.0074, 0.2148], [0.0074, 0.2222], [0.0074, 0.2296], [0.0074, 0.237], [0.0074, 0.2444], [0.0074, 0.2519], [0.0074, 0.2593], [0.0074, 0.2667], [0.0074, 0.2741], [0.0074, 0.2815], [0.0074, 0.2889], [0.0074, 0.2963], [0.0074, 0.3037], [0.0074, 0.3111], [0.0074, 0.3185], [0.0074, 0.3259], [0.0074, 0.3333], [0.0074, 0.3407], [0.0074, 0.3481], [0.0074, 0.3556], [0.0074, 0.363], [0.0074, 0.3704], [0.0074, 0.3778], [0.0074, 0.3852], [0.0074, 0.3926], [0.0074, 0.4], [0.0074, 0.4074], [0.0074, 0.4148], [0.0074, 0.4222], [0.0074, 0.4296], [0.0074, 0.437], [0.0074, 0.4444], [0.0074, 0.4519], [0.0074, 0.4593], [0.0074, 0.4667], [0.0074, 0.4741], [0.0074, 0.4815], [0.0074, 0.4889], [0.0074, 0.4963], [0.0074, 0.5037], [0.0074, 0.5111], [0.0148, 0.5111], [0.0148, 0.5185], [0.0148, 0.5259], [0.0148, 0.5333], [0.0148, 0.5407], [0.0148, 0.5481], [0.0148, 0.5556], [0.0148, 0.563], [0.0148, 0.5704], [0.0148, 0.5778], [0.0148, 0.5852], [0.0148, 0.5926], [0.0148, 0.6], [0.0148, 0.6074], [0.0148, 0.6148], [0.0148, 0.6222], [0.0148, 0.6296], [0.0148, 0.637], [0.0148, 0.6444], [0.0148, 0.6519], [0.0148, 0.6593], [0.0148, 0.6667], [0.0148, 0.6741], [0.0148, 0.6815], [0.0148, 0.6889], [0.0222, 0.6889], [0.0222, 0.6963], [0.0222, 0.7037], [0.0222, 0.7111], [0.0222, 0.7185], [0.0222, 0.7259], [0.0222, 0.7333], [0.0222, 0.7407], [0.0296, 0.7407], [0.037, 0.7407], [0.037, 0.7481], [0.037, 0.7556], [0.0444, 0.7556], [0.0444, 0.763], [0.0444, 0.7704], [0.0444, 0.7778], [0.0444, 0.7852], [0.0444, 0.7926], [0.0444, 0.8], [0.0444, 0.8074], [0.0444, 0.8148], [0.0444, 0.8222], [0.0519, 0.8222], [0.0519, 0.8296], [0.0593, 0.8296], [0.0593, 0.837], [0.0593, 0.8444], [0.0667, 0.8444], [0.0741, 0.8444], [0.0815, 0.8444], [0.0889, 0.8444], [0.0963, 0.8444], [0.1037, 0.8444], [0.1111, 0.8444], [0.1185, 0.8444], [0.1185, 0.8519], [0.1185, 0.8593], [0.1185, 0.8667], [0.1185, 0.8741], [0.1185, 0.8815], [0.1185, 0.8889], [0.1185, 0.8963], [0.1259, 0.8963], [0.1333, 0.8963], [0.1407, 0.8963], [0.1481, 0.8963], [0.1556, 0.8963], [0.1556, 0.9037], [0.1556, 0.9111], [0.1556, 0.9185], [0.1556, 0.9259], [0.1556, 0.9333], [0.163, 0.9333], [0.163, 0.9407], [0.1704, 0.9407], [0.1778, 0.9407], [0.1852, 0.9407], [0.1926, 0.9407], [0.1926, 0.9481], [0.1926, 0.9556], [0.2, 0.9556], [0.2074, 0.9556], [0.2148, 0.9556], [0.2222, 0.9556], [0.2296, 0.9556], [0.237, 0.9556], [0.2444, 0.9556], [0.2519, 0.9556], [0.2593, 0.9556], [0.2593, 0.963], [0.2593, 0.9704], [0.2593, 0.9778], [0.2593, 0.9852], [0.2667, 0.9852], [0.2741, 0.9852], [0.2815, 0.9852], [0.2889, 0.9852], [0.2963, 0.9852], [0.3037, 0.9852], [0.3111, 0.9852], [0.3185, 0.9852], [0.3185, 0.9926], [0.3259, 0.9926], [0.3333, 0.9926], [0.3407, 0.9926], [0.3481, 0.9926], [0.3556, 0.9926], [0.363, 0.9926], [0.3704, 0.9926], [0.3778, 0.9926], [0.3852, 0.9926], [0.3926, 0.9926], [0.4, 0.9926], [0.4074, 0.9926], [0.4148, 0.9926], [0.4222, 0.9926], [0.4296, 0.9926], [0.437, 0.9926], [0.4444, 0.9926], [0.4519, 0.9926], [0.4593, 0.9926], [0.4667, 0.9926], [0.4741, 0.9926], [0.4815, 0.9926], [0.4889, 0.9926], [0.4963, 0.9926], [0.5037, 0.9926], [0.5111, 0.9926], [0.5185, 0.9926], [0.5259, 0.9926], [0.5259, 1.0], [0.5333, 1.0], [0.5407, 1.0], [0.5481, 1.0], [0.5556, 1.0], [0.563, 1.0], [0.5704, 1.0], [0.5778, 1.0], [0.5852, 1.0], [0.5926, 1.0], [0.6, 1.0], [0.6074, 1.0], [0.6148, 1.0], [0.6222, 1.0], [0.6296, 1.0], [0.637, 1.0], [0.6444, 1.0], [0.6519, 1.0], [0.6593, 1.0], [0.6667, 1.0], [0.6741, 1.0], [0.6815, 1.0], [0.6889, 1.0], [0.6963, 1.0], [0.7037, 1.0], [0.7111, 1.0], [0.7185, 1.0], [0.7259, 1.0], [0.7333, 1.0], [0.7407, 1.0], [0.7481, 1.0], [0.7556, 1.0], [0.763, 1.0], [0.7704, 1.0], [0.7778, 1.0], [0.7852, 1.0], [0.7926, 1.0], [0.8, 1.0], [0.8074, 1.0], [0.8148, 1.0], [0.8222, 1.0], [0.8296, 1.0], [0.837, 1.0], [0.8444, 1.0], [0.8519, 1.0], [0.8593, 1.0], [0.8667, 1.0], [0.8741, 1.0], [0.8815, 1.0], [0.8889, 1.0], [0.8963, 1.0], [0.9037, 1.0], [0.9111, 1.0], [0.9185, 1.0], [0.9259, 1.0], [0.9333, 1.0], [0.9407, 1.0], [0.9481, 1.0], [0.9556, 1.0], [0.963, 1.0], [0.9704, 1.0], [0.9778, 1.0], [0.9852, 1.0], [0.9926, 1.0], [1.0, 1.0]], "sweep": [[0.0, 1.0, 0.5], [0.02, 1.0, 0.5], [0.04, 1.0, 0.5], [0.06, 1.0, 0.5], [0.08, 1.0, 0.5], [0.1, 1.0, 0.5], [0.12, 1.0, 0.5], [0.14, 1.0, 0.5], [0.16, 1.0, 0.5], [0.18, 1.0, 0.5037], [0.2, 1.0, 0.6081], [0.22, 0.9926, 0.6943], [0.24, 0.9926, 0.7403], [0.26, 0.9852, 0.7824], [0.28, 0.9556, 0.8012], [0.3, 0.9556, 0.8217], [0.32, 0.9556, 0.8217], [0.34, 0.9407, 0.8467], [0.36, 0.9333, 0.8571], [0.38, 0.9333, 0.8571], [0.4, 0.9333, 0.8571], [0.42, 0.8741, 0.8806], [0.44, 0.8444, 0.8906], [0.46, 0.8444, 0.8906], [0.48, 0.8444, 0.9268], [0.5, 0.8444, 0.9268], [0.52, 0.8296, 0.9412], [0.54, 0.8222, 0.9407], [0.56, 0.8222, 0.9407], [0.58, 0.8222, 0.9487], [0.6, 0.8074, 0.9478], [0.62, 0.8074, 0.9478], [0.64, 0.8, 0.9474], [0.66, 0.7778, 0.9459], [0.68, 0.7704, 0.9455], [0.7, 0.7704, 0.9455], [0.72, 0.7556, 0.9533], [0.74, 0.7556, 0.9533], [0.76, 0.7407, 0.9615], [0.78, 0.7037, 0.9694], [0.8, 0.6889, 0.9789], [0.82, 0.6815, 0.9787], [0.84, 0.6593, 0.978], [0.86, 0.6444, 0.9775], [0.88, 0.5926, 0.9756], [0.9, 0.5185, 0.9722], [0.92, 0.4444, 0.9836], [0.94, 0.3852, 0.9811], [0.96, 0.3259, 0.9778], [0.98, 0.1778, 0.96], [1.0, 0.0, 1.0]], "ops": {"default_0.5": {"threshold": 0.5, "accuracy": 0.8889, "precision": 0.9268, "recall": 0.8444, "fpr": 0.0667, "tp": 114, "fp": 9, "fn": 21, "tn": 126}, "max_f1": {"threshold": 0.4073, "accuracy": 0.8889, "precision": 0.8571, "recall": 0.9333, "fpr": 0.1556, "tp": 126, "fp": 21, "fn": 9, "tn": 114}, "fpr<=0.05": {"threshold": 0.5927, "accuracy": 0.8889, "precision": 0.9487, "recall": 0.8222, "fpr": 0.0444, "tp": 111, "fp": 6, "fn": 24, "tn": 129}, "fpr<=0.1": {"threshold": 0.5, "accuracy": 0.8889, "precision": 0.9268, "recall": 0.8444, "fpr": 0.0667, "tp": 114, "fp": 9, "fn": 21, "tn": 126}}, "loss": {"train": [[5, 3.115], [10, 1.4443], [15, 0.4816], [20, 0.0623], [25, 0.0252], [30, 0.0225], [35, 0.0129], [40, 0.016], [45, 0.0107], [50, 0.0153], [55, 0.0138], [60, 0.014], [65, 0.0135], [70, 0.0131], [75, 0.0163], [80, 0.0125], [85, 0.0142], [90, 0.013], [95, 0.0152], [100, 0.0105], [105, 0.0109], [110, 0.0164], [115, 0.0136], [120, 0.0154], [125, 0.0111], [130, 0.0109], [135, 0.0098], [140, 0.013], [145, 0.009], [150, 0.0126], [155, 0.0131], [160, 0.0127], [165, 0.0139], [170, 0.0092], [175, 0.0103], [180, 0.0126], [185, 0.0116], [190, 0.0128], [195, 0.0149], [200, 0.0101], [205, 0.0109], [210, 0.0115], [215, 0.0132], [220, 0.0108], [225, 0.0103], [230, 0.0101], [235, 0.0135], [240, 0.0121], [245, 0.0143], [250, 0.0131], [255, 0.0127], [260, 0.0108], [265, 0.0126], [270, 0.0116], [275, 0.0136], [280, 0.0105], [285, 0.0103], [290, 0.0128], [295, 0.0119], [300, 0.01], [305, 0.0127], [310, 0.0119], [315, 0.0136], [320, 0.0135], [325, 0.013], [330, 0.0128], [335, 0.0137], [340, 0.0136], [345, 0.0131], [350, 0.0138], [355, 0.0109], [360, 0.0102], [365, 0.0117], [370, 0.0123], [375, 0.0128], [380, 0.012], [385, 0.0119], [390, 0.0116], [395, 0.0128], [400, 0.0112], [405, 0.0119], [410, 0.0112], [415, 0.0134], [420, 0.0122], [425, 0.0119], [430, 0.0093], [435, 0.01], [440, 0.0087], [445, 0.0125], [450, 0.0129], [455, 0.0115], [460, 0.012], [465, 0.0091], [470, 0.0084], [475, 0.0131], [480, 0.0108], [485, 0.0093], [490, 0.012], [495, 0.0121], [500, 0.0119], [505, 0.0114], [510, 0.0105], [515, 0.0114], [520, 0.0112], [525, 0.0097], [530, 0.0093], [535, 0.0119], [540, 0.0113], [545, 0.0122], [550, 0.0109], [555, 0.0131], [560, 0.0125], [565, 0.0094], [570, 0.0135], [575, 0.0113], [580, 0.0109], [585, 0.0108], [590, 0.0097], [595, 0.0133], [600, 0.0123], [605, 0.0135], [610, 0.0106], [615, 0.0113], [620, 0.0117], [625, 0.0101], [630, 0.0104], [635, 0.0094], [640, 0.0107], [645, 0.0104], [650, 0.0096], [655, 0.011], [660, 0.0092], [665, 0.0076], [670, 0.0098], [675, 0.0103], [680, 0.0102], [685, 0.009], [690, 0.0098], [695, 0.0081], [700, 0.0109], [705, 0.0094], [710, 0.0121], [715, 0.0079], [720, 0.0094], [725, 0.0106], [730, 0.0086], [735, 0.0129], [740, 0.0114], [745, 0.0097], [750, 0.0089], [755, 0.0115], [760, 0.0107], [765, 0.0108], [770, 0.0094], [775, 0.0087], [780, 0.0126], [785, 0.011], [790, 0.0089], [795, 0.0096], [800, 0.0078], [805, 0.0096], [810, 0.0106], [815, 0.0098], [820, 0.0085], [825, 0.01], [830, 0.0092], [835, 0.0107], [840, 0.0077], [845, 0.0096], [850, 0.0121], [855, 0.008], [860, 0.0082], [865, 0.0101], [870, 0.0096], [875, 0.0097], [880, 0.0099], [885, 0.0112], [890, 0.0112], [895, 0.0091], [900, 0.0086]], "eval": [[300, 0.0176], [600, 0.0155], [900, 0.0175]]}, "params": [{"field": "chirp_mass_bin", "gold_bins": ["1-2.5", "5-15", "15-25", "25-40", "40-60"], "col_bins": ["1-2.5", "5-15", "15-25", "25-40", "40-60", "N/A"], "matrix": [[0, 0, 0, 0, 0, 9], [0, 0, 0, 18, 0, 0], [0, 0, 0, 41, 0, 13], [0, 0, 0, 27, 0, 0], [0, 0, 0, 27, 0, 0]], "gold_dist": [9, 18, 54, 27, 27], "pred_dist": [0, 0, 0, 113, 0, 22], "exact": 0.2, "adjacent": 0.7037, "chance": 0.2, "cond": 0.2389, "n_bins": 5}, {"field": "distance_bin", "gold_bins": ["<200", "400-800", "800-1600", "1600-3200", "3200+"], "col_bins": ["<200", "400-800", "800-1600", "1600-3200", "3200+", "N/A"], "matrix": [[0, 0, 0, 0, 0, 9], [0, 0, 0, 9, 9, 0], [0, 0, 0, 21, 6, 0], [0, 0, 0, 9, 18, 0], [0, 0, 0, 0, 41, 13]], "gold_dist": [9, 18, 27, 27, 54], "pred_dist": [0, 0, 0, 39, 74, 22], "exact": 0.3704, "adjacent": 0.6593, "chance": 0.2, "cond": 0.4425, "n_bins": 5}, {"field": "chi_eff_bin", "gold_bins": ["-0.2-0.0", "0.0-0.2", "0.2-0.4"], "col_bins": ["-0.2-0.0", "0.0-0.2", "0.2-0.4", "N/A"], "matrix": [[9, 50, 0, 4], [6, 21, 0, 9], [1, 26, 0, 9]], "gold_dist": [63, 36, 36], "pred_dist": [16, 97, 0, 22], "exact": 0.2222, "adjacent": 0.8296, "chance": 0.3333, "cond": 0.2655, "n_bins": 3}], "field_labels": {"chirp_mass_bin": "Chirp Mass (质量)", "distance_bin": "Distance (距离)", "chi_eff_bin": "χ_eff (有效自旋)"}};
+const tip=document.getElementById('tip'),NS='http://www.w3.org/2000/svg';
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in(a||{}))e.setAttribute(k,a[k]);return e;}
+function showTip(ev,h){tip.innerHTML=h;tip.style.opacity=1;tip.style.left=(ev.clientX+12)+'px';tip.style.top=(ev.clientY+12)+'px';}
+function hideTip(){tip.style.opacity=0;}
+function frame(W,H,m){const svg=el('svg',{viewBox:`0 0 ${W} ${H}`});return {svg,ix:x=>m.l+(x-m.x0)/(m.x1-m.x0)*(W-m.l-m.r),iy:y=>H-m.b-(y-m.y0)/(m.y1-m.y0)*(H-m.t-m.b),W,H,m};}
+function axes(F,o){const {svg,m,W,H}=F;svg.appendChild(el('line',{x1:m.l,y1:H-m.b,x2:W-m.r,y2:H-m.b,stroke:'#cbd5e1'}));svg.appendChild(el('line',{x1:m.l,y1:m.t,x2:m.l,y2:H-m.b,stroke:'#cbd5e1'}));
+  (o.yticks||[]).forEach(v=>{const y=F.iy(v);svg.appendChild(el('line',{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:'#eef0f5'}));const t=el('text',{x:m.l-6,y:y+3,'text-anchor':'end','font-size':10,fill:'#9ca3af'});t.textContent=o.yfmt?o.yfmt(v):v;svg.appendChild(t);});
+  if(o.xlabel){const t=el('text',{x:(m.l+W-m.r)/2,y:H-3,'text-anchor':'middle','font-size':10,fill:'#6b7280'});t.textContent=o.xlabel;svg.appendChild(t);}}
+function poly(F,pts,c,w){F.svg.appendChild(el('path',{d:pts.map((p,i)=>(i?'L':'M')+F.ix(p[0]).toFixed(1)+' '+F.iy(p[1]).toFixed(1)).join(' '),fill:'none',stroke:c,'stroke-width':w||2}));}
+
+// ROC
+(function(){const F=frame(480,360,{l:42,r:14,t:12,b:30,x0:0,x1:1,y0:0,y1:1});axes(F,{yticks:[0,.5,1],xlabel:'FPR'});
+  F.svg.appendChild(el('line',{x1:F.ix(0),y1:F.iy(0),x2:F.ix(1),y2:F.iy(1),stroke:'#d1d5db','stroke-dasharray':'4 4'}));
+  poly(F,D.roc,'#21918c',2.4);document.getElementById('roc').appendChild(F.svg);})();
+// sweep
+(function(){const F=frame(480,360,{l:42,r:14,t:12,b:30,x0:0,x1:1,y0:0,y1:1});axes(F,{yticks:[0,.5,1],yfmt:v=>(v*100)+'%',xlabel:'阈值'});
+  F.svg.appendChild(el('line',{x1:F.ix(.5),y1:F.m.t,x2:F.ix(.5),y2:360-F.m.b,stroke:'#cbd5e1','stroke-dasharray':'3 3'}));
+  poly(F,D.sweep.map(p=>[p[0],p[1]]),'#21918c',2);poly(F,D.sweep.map(p=>[p[0],p[2]]),'#e8924f',2);document.getElementById('sweep').appendChild(F.svg);})();
+// ops table
+{const lab={'default_0.5':'默认 0.5','max_f1':'最大F1','fpr<=0.05':'FPR≤5%','fpr<=0.1':'FPR≤10%'};let h='';
+  for(const k in D.ops){const o=D.ops[k];h+=`<tr><td>${lab[k]||k}</td><td class="mono">${o.threshold}</td><td>${(o.accuracy*100).toFixed(1)}%</td><td>${(o.precision*100).toFixed(1)}%</td><td><b>${(o.recall*100).toFixed(1)}%</b></td><td>${(o.fpr*100).toFixed(1)}%</td></tr>`;}
+  document.getElementById('ops').innerHTML=h;}
+
+// 混淆矩阵(行=gold,按行归一化着色)+ 分布
+D.params.forEach(pa=>{
+  const host=document.querySelector(`[data-cm="${pa.field}"]`);if(!host)return;
+  const rows=pa.gold_bins,cols=pa.col_bins,cw=Math.max(34,Math.min(54,260/cols.length)),ch=30,ox=88,oy=46;
+  const W=ox+cols.length*cw+10,H=oy+rows.length*ch+14;const svg=el('svg',{viewBox:`0 0 ${W} ${H}`});
+  cols.forEach((c,j)=>{const t=el('text',{x:ox+j*cw+cw/2,y:oy-6,'text-anchor':'end','font-size':8.5,fill:'#6b7280',transform:`rotate(-40 ${ox+j*cw+cw/2} ${oy-6})`});t.textContent=c;svg.appendChild(t);});
+  const tt=el('text',{x:ox+cols.length*cw/2,y:12,'text-anchor':'middle','font-size':10,fill:'#374151'});tt.textContent='预测 →';svg.appendChild(tt);
+  rows.forEach((r,i)=>{const rs=pa.matrix[i].reduce((a,b)=>a+b,0)||1;
+    const lt=el('text',{x:ox-6,y:oy+i*ch+ch/2+3,'text-anchor':'end','font-size':9,fill:'#374151'});lt.textContent=r;svg.appendChild(lt);
+    cols.forEach((c,j)=>{const v=pa.matrix[i][j],frac=v/rs;const isNA=c==='N/A';
+      const al=0.08+0.85*frac;const fill=isNA?`rgba(180,90,40,${al})`:(r===c?`rgba(18,122,78,${al})`:`rgba(59,82,139,${al})`);
+      const rect=el('rect',{x:ox+j*cw,y:oy+i*ch,width:cw-2,height:ch-2,rx:3,fill:fill});
+      rect.addEventListener('mousemove',e=>showTip(e,`真 ${r} → 预测 ${c}<br>${v} 个 (${(frac*100).toFixed(0)}%)`));rect.addEventListener('mouseleave',hideTip);svg.appendChild(rect);
+      if(v){const n=el('text',{x:ox+j*cw+cw/2-1,y:oy+i*ch+ch/2+3,'text-anchor':'middle','font-size':9,'font-weight':v===Math.max(...pa.matrix[i])?700:400,fill:frac>0.5?'#fff':'#1a1a2e'});n.textContent=v;svg.appendChild(n);}
+    });});
+  const yl=el('text',{x:10,y:oy+rows.length*ch/2,'text-anchor':'middle','font-size':9,fill:'#6b7280',transform:`rotate(-90 10 ${oy+rows.length*ch/2})`});yl.textContent='真实 (gold)';svg.appendChild(yl);
+  host.appendChild(svg);
+  // gold vs pred 分布条
+  const host2=document.querySelector(`[data-dist="${pa.field}"]`);
+  const allb=pa.col_bins,gd=pa.gold_bins,W2=W,bw=Math.max(28,(W2-50)/allb.length),H2=120;
+  const mx=Math.max(...pa.gold_dist,...pa.pred_dist)||1;const s2=el('svg',{viewBox:`0 0 ${W2} ${H2}`});
+  const cap=el('text',{x:8,y:12,'font-size':9.5,fill:'#6b7280'});cap.textContent='分布: ▣gold ▣pred (该参数被预测成哪些档)';s2.appendChild(cap);
+  allb.forEach((b,j)=>{const x=40+j*bw;const gv=gd.includes(b)?pa.gold_dist[gd.indexOf(b)]:0,pv=pa.pred_dist[j];
+    s2.appendChild(el('rect',{x:x,y:H2-18-(gv/mx*78),width:bw*0.4,height:gv/mx*78,fill:'#94a3b8'}));
+    s2.appendChild(el('rect',{x:x+bw*0.45,y:H2-18-(pv/mx*78),width:bw*0.4,height:pv/mx*78,fill:b==='N/A'?'#e8924f':'#21918c'}));
+    const t=el('text',{x:x+bw*0.4,y:H2-6,'text-anchor':'middle','font-size':8,fill:'#6b7280'});t.textContent=b;s2.appendChild(t);});
+  host2.appendChild(s2);
+});
+
+// 损失(对数)
+(function(){const L=D.loss;if(!L)return;const W=900,H=240,host=document.getElementById('loss');
+  const vals=L.train.map(p=>p[1]).concat(L.eval.map(p=>p[1])).filter(v=>v>0);const lo=Math.min(...vals),hi=Math.max(...vals);
+  const F=frame(W,H,{l:50,r:12,t:12,b:28,x0:0,x1:Math.max(...L.train.map(p=>p[0])),y0:Math.log10(lo)-0.12,y1:Math.log10(hi)+0.05});
+  const ticks=[];for(let e=Math.floor(F.m.y1);e>=Math.ceil(F.m.y0);e--)ticks.push(e);
+  axes(F,{yticks:ticks,yfmt:lv=>{const r=Math.pow(10,lv);return r>=1?r.toFixed(0):(r>=0.01?r.toFixed(2):r.toExponential(0));},xlabel:'step(对数纵轴)'});
+  poly(F,L.train.map(p=>[p[0],Math.log10(p[1])]),'#3b528b',1.6);
+  L.eval.forEach(p=>{const c=el('circle',{cx:F.ix(p[0]),cy:F.iy(Math.log10(p[1])),r:4,fill:'#fff',stroke:'#21918c','stroke-width':2});c.addEventListener('mousemove',e=>showTip(e,`eval loss ${p[1]} @${p[0]}`));c.addEventListener('mouseleave',hideTip);F.svg.appendChild(c);});
+  host.appendChild(F.svg);host.insertAdjacentHTML('beforeend','<div style="text-align:center;font-size:.8rem;color:#6b7280">蓝线=train,空心圈=每epoch eval</div>');
+})();
+</script></body></html>

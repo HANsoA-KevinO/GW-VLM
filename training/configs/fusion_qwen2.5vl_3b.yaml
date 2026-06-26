@@ -1,0 +1,39 @@
+# 多模态融合(方法2)原型配置 —— Qwen2.5-VL-3B-Instruct(小模型,跑通架构用)
+# 同族于最终目标 Qwen3.6-27B,融合代码可迁移。原生 transformers + PEFT(非 Unsloth)。
+model_id: Qwen/Qwen2.5-VL-3B-Instruct
+dtype: bfloat16
+device_map: {"": 0}
+
+# 数据
+data_dir: output/training_data/e1            # 检测任务(纯检测 messages)
+image_root: output/spectrograms_viridis      # viridis 图
+strain_root: output/strain_arrays            # 白化应变 .npy(图同名)
+output_dir: output/runs/fusion_qwen25vl3b
+
+# 消融开关(A/B/C 三配置只改这两行)
+use_image: true        # C=仅图: true/false=false 时不喂图
+use_strain: true       # A=仅应变: use_image=false,use_strain=true; B=图+应变: 都 true
+
+# 应变编码器
+strain_sr: 2048
+strain_in_len: 8192
+strain_n_tokens: 12
+strain_channels: [32, 64, 128, 256]
+
+# LoRA(获胜配方;target_modules 在 train_fusion 里展开为全线性层)
+lora_r: 32
+lora_alpha: 32
+lora_dropout: 0.0
+
+# 训练
+max_seq_length: 2048
+batch_size: 4          # 小模型可大些
+grad_accum: 2          # 有效 batch 8
+epochs: 3
+learning_rate: 2.0e-4
+strain_encoder_lr: 1.0e-3   # StrainEncoder 从零训,LR 可比 LoRA 高
+warmup_ratio: 0.03
+weight_decay: 0.01
+seed: 42
+enable_thinking: false      # 训练/推理一致,纯 JSON 目标
+max_pixels: 262144         # 限制图像 token(~83个)提速;消融内部一致
