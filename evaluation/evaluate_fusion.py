@@ -73,22 +73,34 @@ def main():
     args = ap.parse_args()
 
     import torch
-    from transformers import AutoModelForImageTextToText, AutoProcessor
+    from transformers import AutoModelForImageTextToText, AutoProcessor, BitsAndBytesConfig
     from peft import PeftModel
-    from models.strain_encoder import StrainEncoder1D
-    from fusion_model import FusionVLM
+    from models.strain_encoder import StrainEncoder1D, StrainPatchEncoder
+    from fusion_model import FusionVLM, repair_misquantized_linears
     from fusion_collator import FusionCollator
 
     meta = json.loads((Path(args.adapter) / "fusion_meta.json").read_text())
     use_image, use_strain = meta["use_image"], meta["use_strain"]
+    family = meta.get("model_family", "qwen")
+    enc_type = meta.get("strain_encoder_type", "cnn")
+    n_tokens = meta["strain_n_tokens"]
     base_id = json.loads((Path(args.adapter) / "adapter_config.json").read_text())["base_model_name_or_path"]
-    print(f"[eval-fusion] use_image={use_image} use_strain={use_strain} base={base_id}", flush=True)
+    print(f"[eval-fusion] family={family} enc={enc_type} use_image={use_image} use_strain={use_strain} base={base_id}", flush=True)
 
     processor = AutoProcessor.from_pretrained(args.adapter)
     ip = getattr(processor, "image_processor", None)
-    if ip is not None and hasattr(ip, "max_pixels"):
+    if family == "qwen" and ip is not None and hasattr(ip, "max_pixels"):
         ip.max_pixels = int(meta.get("max_pixels", 262144))   # 与训练一致
-    base = AutoModelForImageTextToText.from_pretrained(base_id, dtype=torch.bfloat16, device_map={"": 0})
+    quant = None
+    if meta.get("load_in_4bit"):
+        quant = BitsAndBytesConfig(
+            load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True,
+            llm_int8_skip_modules=["visual", "lm_head"])
+    base = AutoModelForImageTextToText.from_pretrained(
+        base_id, dtype=torch.bfloat16, device_map={"": 0}, quantization_config=quant)
+    if family == "gemma":
+        repair_misquantized_linears(base)
     model = PeftModel.from_pretrained(base, args.adapter)
     model.eval()
     hidden = model.get_base_model().config.text_config.hidden_size
@@ -96,13 +108,20 @@ def main():
 
     strain_enc = None
     if use_strain:
-        strain_enc = StrainEncoder1D(hidden, n_tokens=meta["strain_n_tokens"], in_len=meta["strain_in_len"],
-                                     channels=tuple(meta["strain_channels"])).to("cuda", torch.float32)
+        if enc_type == "patch_attn":
+            strain_enc = StrainPatchEncoder(
+                hidden, in_len=meta["strain_in_len"], patch_size=int(meta["strain_patch_size"]),
+                n_attn_layers=int(meta.get("strain_attn_layers", 3)),
+                n_heads=int(meta.get("strain_attn_heads", 8)),
+                mlp_proj=bool(meta.get("strain_mlp_proj", True))).to("cuda", torch.float32)
+        else:
+            strain_enc = StrainEncoder1D(hidden, n_tokens=n_tokens, in_len=meta["strain_in_len"],
+                                         channels=tuple(meta["strain_channels"])).to("cuda", torch.float32)
         strain_enc.load_state_dict(torch.load(Path(args.adapter) / "strain_encoder.pt"))
         strain_enc.eval()
-    fusion = FusionVLM(model, strain_enc, img_tok)
+    fusion = FusionVLM(model, strain_enc, img_tok, model_family=family)
     pad_id = processor.tokenizer.pad_token_id or processor.tokenizer.eos_token_id
-    collator = FusionCollator(processor, meta["strain_n_tokens"], img_tok, pad_id, enable_thinking=False)
+    collator = FusionCollator(processor, n_tokens, img_tok, pad_id, enable_thinking=False, family=family)
 
     items = load_items(args.test, args.image_root, args.strain_root, use_image, use_strain, args.max_samples)
 
@@ -147,7 +166,9 @@ def main():
     for t in (0.05, 0.10):
         idx = np.where(fpr_c <= t)[0]
         op[f"fpr<={t}"] = at(thr_c[idx[-1]] if len(idx) else 1.0)
-    report = {"use_image": use_image, "use_strain": use_strain, "n": len(yt),
+    report = {"use_image": use_image, "use_strain": use_strain,
+              "model_family": family, "strain_encoder_type": enc_type, "strain_n_tokens": n_tokens,
+              "n": len(yt),
               "roc_auc": round(roc_auc, 4), "pr_auc": round(pr_auc, 4), "operating_points": op}
     (Path(args.adapter) / "fusion_eval.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
     print("\n=== 融合评估 ===")

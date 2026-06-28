@@ -1,0 +1,49 @@
+# 多模态融合(方法2)第 2 轮正式 —— Qwen3.6-27B(已缓存,E1 最佳模型,排除"模型太弱")
+# 应变编码器:patch + 线性投影 + 自注意力;原生 transformers + PEFT(非 Unsloth)。
+# 标准架构(M-RoPE,无 PLE)→ 走 qwen 融合路径(get_image_features.pooler_output + get_rope_index)。
+model_id: unsloth/Qwen3.6-27B
+model_family: qwen
+load_in_4bit: false          # 先试 bf16 全精度(definitive);若加载/前向 OOM 再切 true(QLoRA 保底)
+gradient_checkpointing: true # bf16 必开:省激活,把 forward 压到加载峰值(~108G)以下
+dtype: bfloat16
+device_map: {"": 0}
+
+# 数据
+data_dir: output/training_data/e1
+image_root: output/spectrograms_viridis
+strain_root: output/strain_arrays
+output_dir: output/runs/fusion_q27_B32
+
+# 消融开关
+use_image: true
+use_strain: true
+
+# 应变编码器(patch+自注意力)
+strain_encoder_type: patch_attn
+strain_sr: 2048
+strain_in_len: 8192
+strain_patch_size: 256       # 256→32 token;128→64(--strain-patch 覆盖)
+strain_attn_layers: 3
+strain_attn_heads: 8
+strain_mlp_proj: true
+strain_n_tokens: 32          # 兼容字段(patch_attn 自动推导)
+strain_channels: [32, 64, 128, 256]
+
+# LoRA(获胜配方)
+lora_r: 32
+lora_alpha: 32
+lora_dropout: 0.0
+
+# 训练(27B:小 batch + 大累积;融合前向重,显存稳)
+max_seq_length: 2048
+batch_size: 1
+num_workers: 0               # 避免崩溃留下孤儿 DataLoader worker 拖垮机器/网络;27B 前向才是瓶颈
+grad_accum: 8                # 有效 batch 8(对齐 E1 获胜配方)
+epochs: 2
+learning_rate: 2.0e-4
+strain_encoder_lr: 1.0e-3
+warmup_ratio: 0.03
+weight_decay: 0.01
+seed: 42
+enable_thinking: false       # 训练/推理一致,纯 JSON(E2 已证开 thinking 打崩检测)
+max_pixels: 262144           # 5 配置内部一致 + 可跑完;C vs B 的差值才是结论(非直接对 E1 的 0.94)

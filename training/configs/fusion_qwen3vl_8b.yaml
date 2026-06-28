@@ -1,0 +1,48 @@
+# 多模态融合(方法2)—— Qwen3-VL-8B-Instruct(新一代、标准注意力、无PLE、无线性注意力慢回退)
+# 比 2.5 强、bf16 全精度能装下(8B)、融合代码 qwen 路径直接兼容(image_token_id 151655 同 2.5)。
+model_id: Qwen/Qwen3-VL-8B-Instruct
+model_family: qwen
+load_in_4bit: false          # 8B bf16 轻松装下,全精度
+gradient_checkpointing: false # 8B 无需省显存
+dtype: bfloat16
+device_map: {"": 0}
+
+# 数据
+data_dir: output/training_data/e1
+image_root: output/spectrograms_viridis
+strain_root: output/strain_arrays
+output_dir: output/runs/fusion_q3vl_B32
+
+# 消融开关
+use_image: true
+use_strain: true
+
+# 应变编码器(patch+自注意力)
+strain_encoder_type: patch_attn
+strain_sr: 2048
+strain_in_len: 8192
+strain_patch_size: 256       # 256→32 token;128→64(--strain-patch 覆盖)
+strain_attn_layers: 3
+strain_attn_heads: 8
+strain_mlp_proj: true
+strain_n_tokens: 32
+strain_channels: [32, 64, 128, 256]
+
+# LoRA(获胜配方)
+lora_r: 32
+lora_alpha: 32
+lora_dropout: 0.0
+
+# 训练
+max_seq_length: 2048
+batch_size: 2                # 8B 小,可并行
+num_workers: 2
+grad_accum: 4                # 有效 batch 8
+epochs: 2
+learning_rate: 2.0e-4
+strain_encoder_lr: 1.0e-3
+warmup_ratio: 0.03
+weight_decay: 0.01
+seed: 42
+enable_thinking: false
+max_pixels: 262144           # 5 配置内部一致 + 速度

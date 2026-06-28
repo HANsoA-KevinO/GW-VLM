@@ -1,0 +1,47 @@
+# 多模态融合(方法2)第 2 轮原型 —— Gemma4-E4B(已缓存,排除"模型太弱"confound)
+# 应变编码器:patch + 线性投影 + 自注意力(用户拍板);原生 transformers + PEFT(非 Unsloth)。
+# 注:离线只有 bnb-4bit 权重(代理挂、下不了 bf16),故走 QLoRA;A/B/C 同基座,内部对照公平。
+model_id: unsloth/gemma-4-e4b-it-unsloth-bnb-4bit
+model_family: gemma          # 走 Gemma 路径:张量图特征 masked_scatter + 标准 RoPE(不传 position_ids)
+dtype: bfloat16
+device_map: {"": 0}
+
+# 数据
+data_dir: output/training_data/e1            # 检测任务(纯检测 messages)
+image_root: output/spectrograms_viridis      # viridis 图
+strain_root: output/strain_arrays            # 白化应变 .npy(图同名)
+output_dir: output/runs/fusion_gemma_B32
+
+# 消融开关(C/B/A 改这两行;粒度用 --strain-patch 或改 strain_patch_size)
+use_image: true
+use_strain: true
+
+# 应变编码器(patch+自注意力)
+strain_encoder_type: patch_attn
+strain_sr: 2048
+strain_in_len: 8192
+strain_patch_size: 256       # 256→32 token;128→64 token(n_tokens 自动推导)
+strain_attn_layers: 3
+strain_attn_heads: 8
+strain_mlp_proj: true
+# 旧 CNN 字段(patch_attn 用不到,保留兼容)
+strain_n_tokens: 32
+strain_channels: [32, 64, 128, 256]
+
+# LoRA(获胜配方;target_modules 在 train_fusion 里展开为全线性层)
+lora_r: 32
+lora_alpha: 32
+lora_dropout: 0.0
+
+# 训练
+max_seq_length: 2048
+batch_size: 4
+grad_accum: 2                # 有效 batch 8
+epochs: 2                    # 去 handicap:2ep(非 1)
+learning_rate: 2.0e-4
+strain_encoder_lr: 1.0e-3    # StrainEncoder 从零训,LR 比 LoRA 高
+warmup_ratio: 0.03
+weight_decay: 0.01
+seed: 42
+enable_thinking: false       # Gemma 无 thinking;保留字段
+max_pixels: 0                # Gemma 走原生全分辨率,该字段不生效
