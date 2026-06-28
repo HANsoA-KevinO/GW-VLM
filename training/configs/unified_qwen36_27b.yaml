@@ -1,0 +1,54 @@
+# 统一(E5)—— Qwen3.6-27B 融合(图⊕应变)+ 后验头(VLA 式参数估计)
+# 检测维持生成式 YES/NO;参数走 hidden 上的 GaussianPosteriorHead(高斯 μ+σ,NLL)。
+model_id: unsloth/Qwen3.6-27B
+model_family: qwen
+load_in_4bit: false          # 默认 bf16+梯度检查点(实测 ~79G 装得下);冒烟可 --load-4bit true
+gradient_checkpointing: true
+dtype: bfloat16
+device_map: {"": 0}
+
+# 数据(unified schema:assistant 只出 detection,top-level 连续 targets 喂 head)
+data_dir: output/training_data/e5
+image_root: output/spectrograms_viridis
+strain_root: output/strain_arrays
+output_dir: output/runs/unified_q27
+
+# 图 + 应变都用(统一融合表示)
+use_image: true
+use_strain: true
+
+# 应变编码器(patch+自注意力)
+strain_encoder_type: patch_attn
+strain_sr: 2048
+strain_in_len: 8192
+strain_patch_size: 256       # 256→32 token
+strain_attn_layers: 3
+strain_attn_heads: 8
+strain_mlp_proj: true
+strain_n_tokens: 32
+strain_channels: [32, 64, 128, 256]
+
+# 后验头
+param_loss_weight: 1.0       # 总损失 = LM-CE + λ·NLL
+head_mlp_hidden: 256
+head_dropout: 0.1
+head_lr: 1.0e-3
+
+# LoRA(获胜配方)
+lora_r: 32
+lora_alpha: 32
+lora_dropout: 0.0
+
+# 训练
+max_seq_length: 2048
+batch_size: 1
+num_workers: 0
+grad_accum: 8                # 有效 batch 8
+epochs: 2
+learning_rate: 2.0e-4
+strain_encoder_lr: 1.0e-3
+warmup_ratio: 0.03
+weight_decay: 0.01
+seed: 42
+enable_thinking: false
+max_pixels: 262144

@@ -178,6 +178,15 @@ def assign_bin(value: float | None, bins: list[tuple]) -> str:
             return label
     return bins[-1][2]  # 兜底返回最后一档
 
+
+# 连续参数(unified schema 用):参数名 → 中间 dataset metadata 里的 key。
+# 顺序的唯一真源在 training/models/posterior_head.py 的 PARAM_NAMES;这里只管"从哪取值"。
+PARAM_METADATA_KEYS = {
+    "chirp_mass": "chirp_mass",
+    "distance": "luminosity_distance",
+    "chi_eff": "chi_eff",
+}
+
 DETECTORS = ["H1", "L1"]  # V1 排除（O3 BNS 距离仅 45-51 Mpc，多数事件 SNR<5，与 MLGWSC-1 / Gabbard 2018 等社区标准对齐）
 
 

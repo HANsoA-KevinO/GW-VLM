@@ -50,12 +50,18 @@ class FusionCollator:
                                 torch.full((n,), -100, dtype=labels.dtype), labels[off:]])
         smask = torch.zeros(len(ids), dtype=torch.bool)
         smask[off:off + n] = True
+        # 后验头(unified):tap 位 = 最后一个 prompt token。插入 n 个占位后,原 prompt 末位
+        # (原 index plen-1,≥off)整体后移 n → 新 index = plen + n - 1。右 padding 在尾部,不影响。
+        param_pos = plen + n - 1
         return {
             "input_ids": ids, "labels": labels, "strain_mask": smask,
             "pixel_values": full.get("pixel_values"),
             "image_grid_thw": full.get("image_grid_thw"),          # Qwen
             "image_position_ids": full.get("image_position_ids"),  # Gemma4
             "strain": ex.get("strain"),
+            "param_pos": param_pos,
+            "param_target": ex.get("param_target"),   # 标准化 z [P] 或 None(非 unified)
+            "param_valid": ex.get("param_valid"),     # bool(detection==YES)或 None
         }
 
     def __call__(self, batch):
@@ -86,4 +92,16 @@ class FusionCollator:
         st = [r["strain"] for r in rows if r["strain"] is not None]
         if st:
             out["strain"] = torch.stack([torch.as_tensor(s, dtype=torch.float32) for s in st])
+        # 后验头(unified):param_pos/target/valid。仅当 batch 带 param_target 时输出。
+        if any(r.get("param_target") is not None for r in rows):
+            P = len(next(r["param_target"] for r in rows if r.get("param_target") is not None))
+            ptgt = torch.full((B, P), float("nan"), dtype=torch.float32)
+            pvalid = torch.zeros(B, dtype=torch.bool)
+            for i, r in enumerate(rows):
+                if r.get("param_target") is not None:
+                    ptgt[i] = torch.as_tensor(r["param_target"], dtype=torch.float32)
+                pvalid[i] = bool(r.get("param_valid"))
+            out["param_pos"] = torch.tensor([r["param_pos"] for r in rows], dtype=torch.long)
+            out["param_target"] = ptgt
+            out["param_valid"] = pvalid
         return out

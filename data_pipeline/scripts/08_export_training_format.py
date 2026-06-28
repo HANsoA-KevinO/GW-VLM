@@ -36,11 +36,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from config import OUTPUT_DIR, SPECTROGRAMS_DIR
+from config import OUTPUT_DIR, SPECTROGRAMS_DIR, PARAM_METADATA_KEYS
 
 
 SPLITS = ("train", "val", "test")
-SCHEMA_TO_SUBDIR = {"detection_only": "e1", "multitask": "e2"}
+# unified(E5)= 统一后验头:assistant 只出 detection,连续参数走 top-level targets 喂 head
+SCHEMA_TO_SUBDIR = {"detection_only": "e1", "multitask": "e2", "unified": "e5"}
 
 # --- 固定 system prompt（docs/02 §4.1）-------------------------------------
 
@@ -69,12 +70,13 @@ SYSTEM_PROMPT_MULTITASK = (
 SYSTEM_PROMPTS = {
     "detection_only": SYSTEM_PROMPT_DETECTION_ONLY,
     "multitask": SYSTEM_PROMPT_MULTITASK,
+    "unified": SYSTEM_PROMPT_DETECTION_ONLY,  # 生成式只出 detection;参数由后验头出
 }
 
 
 def build_assistant_target(label: dict, schema: str) -> str:
     """按 schema 生成 assistant 目标 JSON 串（紧凑、字段顺序固定）。"""
-    if schema == "detection_only":
+    if schema in ("detection_only", "unified"):
         obj = {"detection": label["detection"]}
     else:  # multitask
         obj = {
@@ -100,13 +102,23 @@ def convert_sample(sample: dict, schema: str, system_prompt: str,
     user_content = [{"type": "image", "image": image_field}]
     if user_text:  # 默认空：docs §4.1 规定 user 仅图像、无文字；指令在 system prompt
         user_content.append({"type": "text", "text": user_text})
-    return {
+    record = {
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
             {"role": "assistant", "content": build_assistant_target(sample["label"], schema)},
         ]
     }
+    if schema == "unified":
+        # 连续参数(喂后验头)+ basename(查 strain_arrays/<basename>.npy)
+        is_pos = sample["label"]["detection"] == "YES"
+        meta = sample.get("metadata", {}) or {}
+        record["targets"] = {
+            name: (meta.get(key) if is_pos else None)
+            for name, key in PARAM_METADATA_KEYS.items()
+        }
+        record["basename"] = Path(sample["image_path"]).stem
+    return record
 
 
 def convert_split(in_path: Path, out_path: Path, schema: str, system_prompt: str,

@@ -37,12 +37,15 @@ def repair_misquantized_linears(model):
 
 
 class FusionVLM(nn.Module):
-    def __init__(self, vlm, strain_encoder, image_token_id: int, model_family: str = "qwen"):
+    def __init__(self, vlm, strain_encoder, image_token_id: int, model_family: str = "qwen",
+                 param_head=None, param_loss_weight: float = 1.0):
         super().__init__()
         self.vlm = vlm                       # PEFT 包好的 VLM
         self.strain_encoder = strain_encoder  # None 表示不用应变(消融)
         self.image_token_id = image_token_id
         self.model_family = model_family      # "qwen" | "gemma"
+        self.param_head = param_head          # None=只检测;否则统一后验头(VLA 式参数)
+        self.param_loss_weight = param_loss_weight
 
     def _base(self):
         m = self.vlm
@@ -50,7 +53,8 @@ class FusionVLM(nn.Module):
 
     def forward(self, input_ids, attention_mask, labels=None,
                 pixel_values=None, image_grid_thw=None, image_position_ids=None,
-                strain=None, strain_mask=None, **_):
+                strain=None, strain_mask=None,
+                param_pos=None, param_target=None, param_valid=None, **_):
         base = self._base()
         is_gemma = self.model_family == "gemma"
         emb = base.get_input_embeddings()(input_ids)            # [B,S,H]
@@ -78,14 +82,32 @@ class FusionVLM(nn.Module):
             emb = emb.clone()
             emb[strain_mask] = se.reshape(-1, se.shape[-1])
 
-        # 3) position_ids:Qwen 须自算 M-RoPE;Gemma 标准 RoPE 不传(模型自算)
+        # 3) 跑 VLM:Qwen 须自算 M-RoPE;Gemma 标准 RoPE 不传。需要后验头时取末层 hidden。
+        need_hidden = self.param_head is not None and param_pos is not None
         if is_gemma:
-            return self.vlm(inputs_embeds=emb, attention_mask=attention_mask,
-                            labels=labels, use_cache=False)
-        mm_type = (input_ids == self.image_token_id).to(torch.int32)
-        # 关键字传参,兼容 Qwen2.5-VL(含 second_per_grid_ts)与 Qwen3.5(无该参)两套签名
-        pos, _ = base.model.get_rope_index(
-            input_ids=input_ids, mm_token_type_ids=mm_type,
-            image_grid_thw=image_grid_thw, attention_mask=attention_mask)
-        return self.vlm(inputs_embeds=emb, attention_mask=attention_mask,
-                        position_ids=pos, labels=labels, use_cache=False)
+            out = self.vlm(inputs_embeds=emb, attention_mask=attention_mask,
+                           labels=labels, use_cache=False, output_hidden_states=need_hidden)
+        else:
+            mm_type = (input_ids == self.image_token_id).to(torch.int32)
+            # 关键字传参,兼容 Qwen2.5-VL(含 second_per_grid_ts)与 Qwen3.5(无该参)两套签名
+            pos, _ = base.model.get_rope_index(
+                input_ids=input_ids, mm_token_type_ids=mm_type,
+                image_grid_thw=image_grid_thw, attention_mask=attention_mask)
+            out = self.vlm(inputs_embeds=emb, attention_mask=attention_mask,
+                           position_ids=pos, labels=labels, use_cache=False,
+                           output_hidden_states=need_hidden)
+
+        # 4) 后验头(VLA 式参数):取 param_pos 处末层 hidden → head → 高斯 NLL(只算正样本)
+        if need_hidden:
+            from models.posterior_head import gaussian_nll
+            h_last = out.hidden_states[-1]                      # [B,S,H]
+            B = h_last.shape[0]
+            feat = h_last[torch.arange(B, device=h_last.device), param_pos]  # [B,H]
+            mu, logstd = self.param_head(feat)                 # fp32 [B,P]
+            out.param_mu, out.param_logstd = mu, logstd
+            if param_target is not None and param_valid is not None:
+                nll = gaussian_nll(mu, logstd, param_target.float(), param_valid)
+                out.param_nll = nll
+                if out.loss is not None:
+                    out.loss = out.loss + self.param_loss_weight * nll
+        return out
