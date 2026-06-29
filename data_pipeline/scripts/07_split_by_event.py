@@ -78,6 +78,12 @@ def split_dataset(samples: list[dict]) -> tuple[list, list, list]:
 
     key_to_split: dict[tuple[str, str], str] = {}
     for kind, keys in by_kind.items():
+        # 合成样本(注入/glitch)只进 train:① 防"合成 vs 真实"捷径 ② val/test 全真实 = 量真实泛化。
+        # real 先于 inject 处理(dataset 里 real 在前)→ real 的切分与无注入时完全一致(seed 42)。
+        if kind in ("inject", "glitch"):
+            for k in keys:
+                key_to_split[(kind, k)] = "train"
+            continue
         train_k, val_k, test_k = split_keys(sorted(keys), rng)
         for k in train_k:
             key_to_split[(kind, k)] = "train"
