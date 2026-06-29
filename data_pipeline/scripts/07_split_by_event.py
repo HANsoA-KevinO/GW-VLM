@@ -60,6 +60,8 @@ def _group_kind(source_type: str) -> str:
         return "inject"
     if source_type == "glitch_neg":
         return "glitch"
+    if source_type == "noise_neg":
+        return "noise"
     return "other"
 
 
@@ -80,7 +82,7 @@ def split_dataset(samples: list[dict]) -> tuple[list, list, list]:
     for kind, keys in by_kind.items():
         # 合成样本(注入/glitch)只进 train:① 防"合成 vs 真实"捷径 ② val/test 全真实 = 量真实泛化。
         # real 先于 inject 处理(dataset 里 real 在前)→ real 的切分与无注入时完全一致(seed 42)。
-        if kind in ("inject", "glitch"):
+        if kind in ("inject", "glitch", "noise"):
             for k in keys:
                 key_to_split[(kind, k)] = "train"
             continue

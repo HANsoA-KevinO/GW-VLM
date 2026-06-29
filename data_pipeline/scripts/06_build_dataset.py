@@ -50,6 +50,7 @@ STATS_PATH = OUTPUT_DIR / "dataset_stats.txt"
 REAL_PAT = re.compile(r"^(?P<event>GW\d+(?:_\d+)?)_(?P<ifo>H1|L1|V1)_(?P<kind>pos|neg)(?:_j(?P<j>\d+))?\.png$")
 INJECT_PAT = re.compile(r"^inject_(?P<id>[A-Za-z0-9_-]+)_(?P<ifo>H1|L1|V1)\.png$")
 GLITCH_PAT = re.compile(r"^glitch_(?P<id>[A-Za-z0-9_-]+)_(?P<ifo>H1|L1|V1)\.png$")
+NOISE_PAT = re.compile(r"^noise_(?P<segid>\d+_\d+)_(?P<ifo>H1|L1|V1)_neg_w(?P<w>\d+)\.png$")
 
 
 def build_real_label(event: dict, kind: str) -> dict:
@@ -168,6 +169,24 @@ def build_dataset(spectro_dir=SPECTROGRAMS_DIR) -> list[dict]:
                 "ifo": ifo,
                 "jitter_idx": 0,
                 "metadata": meta,
+            })
+            continue
+
+        m = NOISE_PAT.match(png.name)
+        if m:
+            segid = m.group("segid")
+            ifo = m.group("ifo")
+            if ifo not in DETECTORS:
+                continue
+            samples.append({
+                "image_path": str(png.resolve()),
+                "label": build_glitch_label(),   # 检测 NO,参数 N/A
+                "source_type": "noise_neg",
+                "split_key": f"noise_{segid}",
+                "event_name": None,
+                "ifo": ifo,
+                "jitter_idx": int(m.group("w")),
+                "metadata": {"source": "GWOSC_O3", "segid": segid},
             })
             continue
 

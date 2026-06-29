@@ -203,3 +203,23 @@ IMAGE_SIZE = 1024
 
 
 MONTAGE_CELL_SIZE = 256
+
+
+# ---------------------------------------------------------------------------
+# 噪声池扩充(03b):从 GWOSC 拉干净 O3 噪声 → 负样本池 + 注入背景池(GPS 冻结、互斥)
+# ---------------------------------------------------------------------------
+RAW_NOISE_DIR = OUTPUT_DIR / "raw_noise"
+NOISE_POOL_MANIFEST = OUTPUT_DIR / "noise_pool_manifest.jsonl"
+# O3a / O3b GPS 区间(GWOSC 公开数据)
+O3A_RANGE = (1238166018, 1253977218)
+O3B_RANGE = (1256655618, 1269363618)
+# 数据质量旗标:CBC CAT2(同事件用的搜索质量)+ 无硬件注入。取 H1∩L1 同时段。
+NOISE_DQ_FLAGS = ["H1_CBC_CAT2", "L1_CBC_CAT2", "H1_NO_CBC_HW_INJ", "L1_NO_CBC_HW_INJ"]
+NOISE_EVENT_GUARD = 180.0        # 事件 GPS ±此秒数 veto(含 GWTC 全部 + 我们 events.csv)
+NOISE_SEG_PAD = 8.0              # 段两端留白(白化边缘腐蚀 + 窗口半长)
+NOISE_SUBSEG_HALF = 64.0        # 注入子段半长(与 04 一致)
+NOISE_NEG_MIN_DUR = 2 * WINDOW_SECONDS + 2 * NOISE_SEG_PAD          # neg 段最短(只需 4s 窗)= 24s
+NOISE_INJBG_MIN_DUR = 2 * (NOISE_SUBSEG_HALF + NOISE_SEG_PAD) + 40  # injbg 段最短(容多个注入中心)= 184s
+NEG_FRACTION = 0.6              # 干净段中 ~60% 当负样本,~40% 当注入背景
+NOISE_NEG_WINDOWS_PER_SEG = 12  # 每个 neg 段每探测器切多少独立窗口(实际数量按配平回调)
+NOISE_GLITCH_MAX = 8.0          # 幅度筛:白化窗口 |max| 超此值视为 glitch,丢弃(挡未编目 glitch)

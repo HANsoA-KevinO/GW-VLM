@@ -73,6 +73,30 @@ def train_hosts():
             if n in evmap and all((RAW_STRAIN_DIR / f"{n}_{ifo}.hdf5").exists() for ifo in DETECTORS)]
 
 
+def injbg_hosts():
+    """噪声池 role==injbg 段当注入背景 host(伪 host dict)。"""
+    from config import NOISE_POOL_MANIFEST, RAW_NOISE_DIR
+    hosts = []
+    if not NOISE_POOL_MANIFEST.exists():
+        return hosts
+    for line in open(NOISE_POOL_MANIFEST):
+        r = json.loads(line)
+        if r["role"] != "injbg":
+            continue
+        if all((RAW_NOISE_DIR / f"noise_{r['segid']}_{ifo}.hdf5").exists() for ifo in DETECTORS):
+            hosts.append({"name": f"noise_{r['segid']}", "is_noise": True, "segid": r["segid"],
+                          "gps": r["gps_end"] + 1e6, "negative_offset": 0.0})  # sentinel:窗口按全段算
+    return hosts
+
+
+def host_strain_path(host, ifo):
+    """按 host 类型返回 strain 文件路径(噪声 host 在 raw_noise/,真实事件在 raw_strain/)。"""
+    from config import RAW_NOISE_DIR
+    if host.get("is_noise"):
+        return RAW_NOISE_DIR / f"noise_{host['segid']}_{ifo}.hdf5"
+    return RAW_STRAIN_DIR / f"{host['name']}_{ifo}.hdf5"
+
+
 _MSUN_S = 4.925491e-6   # G·Msun/c³ [秒]
 
 
@@ -122,10 +146,11 @@ def main():
 
     RAW_INJ_DIR.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(args.seed)
-    hosts = train_hosts()
+    hosts = train_hosts() + injbg_hosts()   # 真实事件 off-source + 噪声池 injbg 段
     if not hosts:
-        raise RuntimeError("无可用 host(train 事件且 H1+L1 有 raw_strain)")
-    print(f"[inject] host {len(hosts)} 事件 | 目标 {args.n} 注入 × {len(DETECTORS)} 探测器 | approx={APPROX}", flush=True)
+        raise RuntimeError("无可用 host(train 事件 raw_strain 或 噪声池 injbg)")
+    n_noise = sum(1 for h in hosts if h.get("is_noise"))
+    print(f"[inject] host {len(hosts)}(其中噪声池 {n_noise}) | 目标 {args.n} 注入 × {len(DETECTORS)} | approx={APPROX}", flush=True)
 
     mf = open(MANIFEST, "w"); ok = 0
     skip = {"window": 0, "snr": 0, "distance": 0, "error": 0}
@@ -136,13 +161,15 @@ def main():
         gps, neg = host["gps"], host["negative_offset"]
         try:
             if (host["name"], "H1") not in host_cache:
-                host_cache[(host["name"], "H1")] = TimeSeries.read(
-                    RAW_STRAIN_DIR / f"{host['name']}_H1.hdf5", format="hdf5")
+                host_cache[(host["name"], "H1")] = TimeSeries.read(host_strain_path(host, "H1"), format="hdf5")
             h1 = host_cache[(host["name"], "H1")]
         except Exception:
             skip["error"] += 1; continue
         t0, tend = h1.t0.value, h1.t0.value + h1.duration.value
-        lo = t0 + SUBSEG_HALF + 8; hi = min(gps - neg - 30, tend - SUBSEG_HALF - 8)
+        if host.get("is_noise"):   # 噪声 host:整段(已 event-veto、远离任何事件),用全段窗口
+            lo, hi = t0 + SUBSEG_HALF + 8, tend - SUBSEG_HALF - 8
+        else:
+            lo = t0 + SUBSEG_HALF + 8; hi = min(gps - neg - 30, tend - SUBSEG_HALF - 8)
         if hi <= lo:
             skip["window"] += 1; continue
         inj_center = float(rng.uniform(lo, hi))
@@ -153,7 +180,7 @@ def main():
             for ifo in DETECTORS:
                 key = (host["name"], ifo)
                 if key not in host_cache:
-                    host_cache[key] = TimeSeries.read(RAW_STRAIN_DIR / f"{host['name']}_{ifo}.hdf5", format="hdf5")
+                    host_cache[key] = TimeSeries.read(host_strain_path(host, ifo), format="hdf5")
                 sub = host_cache[key].crop(inj_center - SUBSEG_HALF, inj_center + SUBSEG_HALF).to_pycbc()
                 psd = inverse_spectrum_truncation(
                     interpolate(sub.psd(4), sub.delta_f),
