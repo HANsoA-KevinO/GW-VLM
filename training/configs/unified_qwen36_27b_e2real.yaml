@@ -1,0 +1,50 @@
+# new-E2(真实-only 对照)—— Qwen3.6-27B 融合(图⊕应变)+ 后验头
+# 与 E4 配置逐项相同,只换 data_dir(真实-only,无注入/噪声)+ output_dir。
+# 目的:隔离"形态(bin→后验头)+ 应变"的贡献,作为 E4(加注入数据)的对照。
+model_id: unsloth/Qwen3.6-27B
+model_family: qwen
+load_in_4bit: false
+gradient_checkpointing: true
+dtype: bfloat16
+device_map: {"": 0}
+
+# 数据:真实-only(90 事件,E1/E2 同切分)
+data_dir: output/training_data/e5_real
+image_root: output/spectrograms_viridis
+strain_root: output/strain_arrays
+output_dir: output/runs/e2_unified_real
+
+use_image: true
+use_strain: true
+
+strain_encoder_type: patch_attn
+strain_sr: 2048
+strain_in_len: 8192
+strain_patch_size: 256
+strain_attn_layers: 3
+strain_attn_heads: 8
+strain_mlp_proj: true
+strain_n_tokens: 32
+strain_channels: [32, 64, 128, 256]
+
+param_loss_weight: 1.0
+head_mlp_hidden: 256
+head_dropout: 0.1
+head_lr: 1.0e-3
+
+lora_r: 32
+lora_alpha: 32
+lora_dropout: 0.0
+
+max_seq_length: 2048
+batch_size: 1
+num_workers: 0
+grad_accum: 8
+epochs: 2
+learning_rate: 2.0e-4
+strain_encoder_lr: 1.0e-3
+warmup_ratio: 0.03
+weight_decay: 0.01
+seed: 42
+enable_thinking: false
+max_pixels: 262144
