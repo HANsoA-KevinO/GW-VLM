@@ -20,6 +20,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
+from astropy.utils import iers
+iers.conf.auto_download = False          # 用 astropy 自带 IERS-A,禁联网下载(否则 Detector 调用会卡死在 SSL)
 from gwpy.timeseries import TimeSeries
 
 from config import RAW_STRAIN_DIR, OUTPUT_DIR, DETECTORS, load_events_from_csv
@@ -36,7 +38,9 @@ def sample_params(rng, test=False):
     if test:
         stream, m1, m2 = "bbh", 35.0, 30.0     # 自检:清晰响 BBH
     else:
-        stream = rng.choice(["bbh", "bns", "nsbh"], p=[0.7, 0.15, 0.15])
+        # BBH 为主(真实 GW 主体、波形完整、SNR 足);少量 NSBH 给低 chirp_mass bin 一些覆盖。
+        # 纯 BNS 因 f_lower 截断后 SNR≈0 几乎全被过滤,占比压低省算力。
+        stream = rng.choice(["bbh", "bns", "nsbh"], p=[0.85, 0.03, 0.12])
         if stream == "bbh":
             m1 = rng.uniform(5, 80); m2 = rng.uniform(5, m1)
         elif stream == "bns":
@@ -69,16 +73,28 @@ def train_hosts():
             if n in evmap and all((RAW_STRAIN_DIR / f"{n}_{ifo}.hdf5").exists() for ifo in DETECTORS)]
 
 
+_MSUN_S = 4.925491e-6   # G·Msun/c³ [秒]
+
+
+def f_lower_for(mc_solar, dur_s=14.0):
+    """选 f_lower 使牛顿啁啾时长≈dur_s(避免轻质量 BNS 从 20Hz 生成超长波形拖死)。
+    重 BBH → <20Hz → 取 20;轻 BNS → 抬高 f_lower 把时长压到 ~14s(merger 居中,可见部分够)。"""
+    mc = mc_solar * _MSUN_S
+    pif = (5.0 / (256.0 * dur_s) * mc ** (-5.0 / 3.0)) ** (3.0 / 8.0)
+    return max(F_LOWER, float(pif / np.pi))
+
+
 def project(p, det, t_gps):
     """投影到探测器的波形(pycbc TS,merger 在自身 epoch 的 t=0;distance=1000Mpc 占位)。"""
     from pycbc.waveform import get_td_waveform
     from pycbc.detector import Detector
+    flo = f_lower_for(p["chirp_mass"])
     hp, hc = get_td_waveform(approximant=APPROX, mass1=p["mass1"], mass2=p["mass2"],
                              spin1z=p["spin1z"], spin2z=p["spin2z"],
                              inclination=p["inclination"], coa_phase=p["coa_phase"],
-                             distance=1000.0, delta_t=1.0 / SAMPLE_RATE, f_lower=F_LOWER)
+                             distance=1000.0, delta_t=1.0 / SAMPLE_RATE, f_lower=flo)
     fp, fc = Detector(det).antenna_pattern(p["ra"], p["dec"], p["polarization"], t_gps)
-    return fp * hp + fc * hc
+    return (fp * hp + fc * hc), flo
 
 
 def add_waveform(noise_np, noise_t0, dt, h_pycbc, t_merger):
@@ -113,13 +129,17 @@ def main():
 
     mf = open(MANIFEST, "w"); ok = 0
     skip = {"window": 0, "snr": 0, "distance": 0, "error": 0}
+    host_cache = {}   # 缓存 host 整段读取(同 host 复用,省重复 IO)
     for i in range(args.n):
         p = sample_params(rng, test=args.test)
         host = hosts[rng.integers(len(hosts))]
         gps, neg = host["gps"], host["negative_offset"]
         try:
-            h1 = TimeSeries.read(RAW_STRAIN_DIR / f"{host['name']}_H1.hdf5", format="hdf5")
-        except Exception as e:
+            if (host["name"], "H1") not in host_cache:
+                host_cache[(host["name"], "H1")] = TimeSeries.read(
+                    RAW_STRAIN_DIR / f"{host['name']}_H1.hdf5", format="hdf5")
+            h1 = host_cache[(host["name"], "H1")]
+        except Exception:
             skip["error"] += 1; continue
         t0, tend = h1.t0.value, h1.t0.value + h1.duration.value
         lo = t0 + SUBSEG_HALF + 8; hi = min(gps - neg - 30, tend - SUBSEG_HALF - 8)
@@ -131,12 +151,14 @@ def main():
         per = {}; net_sq = 0.0
         try:
             for ifo in DETECTORS:
-                ts = TimeSeries.read(RAW_STRAIN_DIR / f"{host['name']}_{ifo}.hdf5", format="hdf5")
-                sub = ts.crop(inj_center - SUBSEG_HALF, inj_center + SUBSEG_HALF).to_pycbc()
+                key = (host["name"], ifo)
+                if key not in host_cache:
+                    host_cache[key] = TimeSeries.read(RAW_STRAIN_DIR / f"{host['name']}_{ifo}.hdf5", format="hdf5")
+                sub = host_cache[key].crop(inj_center - SUBSEG_HALF, inj_center + SUBSEG_HALF).to_pycbc()
                 psd = inverse_spectrum_truncation(
                     interpolate(sub.psd(4), sub.delta_f),
                     int(4 * sub.sample_rate), low_frequency_cutoff=F_LOWER)
-                h = project(p, ifo, inj_center)
+                h, _ = project(p, ifo, inj_center)
                 hh = h.copy(); hh.resize(len(sub))
                 opt = float(sigma(hh, psd=psd, low_frequency_cutoff=F_LOWER))
                 per[ifo] = (sub, h, opt); net_sq += opt ** 2
