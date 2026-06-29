@@ -87,9 +87,9 @@ def build_glitch_label() -> dict:
     }
 
 
-def build_dataset() -> list[dict]:
+def build_dataset(spectro_dir=SPECTROGRAMS_DIR) -> list[dict]:
     events = {e["name"]: e for e in load_events_from_csv()}
-    pngs = sorted(SPECTROGRAMS_DIR.glob("*.png"))
+    pngs = sorted(Path(spectro_dir).glob("*.png"))
 
     samples = []
     unmatched = []
@@ -208,7 +208,13 @@ def write_outputs(samples: list[dict]) -> None:
 
 
 def main() -> None:
-    samples = build_dataset()
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dir", default=str(SPECTROGRAMS_DIR),
+                    help="谱图目录(默认 spectrograms;含注入时用 spectrograms_viridis)")
+    args = ap.parse_args()
+    print(f"[build_dataset] 扫描目录: {args.dir}")
+    samples = build_dataset(Path(args.dir))
     write_outputs(samples)
 
 
