@@ -29,8 +29,8 @@ def main():
     import torch
     from models.baseline_param import StrainParamBaseline
     from models.posterior_head import PARAM_NAMES, standardize, invert
-    from config import CHIRP_MASS_BINS, DISTANCE_BINS, CHI_EFF_BINS, assign_bin
-    BINS = {"chirp_mass": CHIRP_MASS_BINS, "distance": DISTANCE_BINS, "chi_eff": CHI_EFF_BINS}
+    from config import CHIRP_MASS_BINS, TOTAL_MASS_BINS, CHI_EFF_BINS, assign_bin
+    BINS = {"chirp_mass": CHIRP_MASS_BINS, "total_mass": TOTAL_MASS_BINS, "chi_eff": CHI_EFF_BINS}
 
     adp = Path(args.adapter)
     meta = json.loads((adp / "baseline_meta.json").read_text())
@@ -43,6 +43,8 @@ def main():
     X, phys = [], []
     for line in open(args.test):
         r = json.loads(line); t = r.get("targets") or {}
+        if not r.get("param_eval", True):   # 跳过不可靠标签事件(与统一评估同口径)
+            continue
         if not all(t.get(n) is not None for n in PARAM_NAMES):
             continue
         X.append(np.load(f"{args.strain_root}/{r['basename']}.npy").astype("float32"))
@@ -73,7 +75,7 @@ def main():
                      "coverage_90": round(float(np.mean((pj > 0.05) & (pj < 0.95))), 4),
                      "chance": round(1.0 / len(bins), 4)}
     (adp / "baseline_eval.json").write_text(json.dumps(rep, indent=2, ensure_ascii=False))
-    print(f"\n=== 经典基线参数评估(真实正样本 n={len(tp)};对照 E2: distance .442/mass .239/chi .265)===")
+    print(f"\n=== 经典基线参数评估(可靠标签真实正样本 n={len(tp)};对照 E2-old: chirp .239/chi .265)===")
     for name in PARAM_NAMES:
         m = rep[name]
         print(f"  {name:11s} NLL={m['nll']:.3f} MAE={m['mae']:.3f} bin-exact={m['exact_bin_acc']:.3f}"

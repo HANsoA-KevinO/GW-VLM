@@ -17,9 +17,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-# 参数顺序的唯一真源;PARAM_LOG 指明哪些取 log 变换
-PARAM_NAMES = ["chirp_mass", "distance", "chi_eff"]
-PARAM_LOG = [True, True, False]
+# 参数顺序的唯一真源;PARAM_LOG 指明哪些取 log 变换。
+# 都 detector-frame;distance 已剔(单探测器与 inclination 简并、信息欠定,详见 docs/09)。
+PARAM_NAMES = ["chirp_mass", "total_mass", "chi_eff"]
+PARAM_LOG = [True, True, False]   # 质量 log 建模;chi_eff identity
 N_PARAMS = len(PARAM_NAMES)
 
 

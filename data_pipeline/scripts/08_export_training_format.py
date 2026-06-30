@@ -118,6 +118,9 @@ def convert_sample(sample: dict, schema: str, system_prompt: str,
             for name, key in PARAM_METADATA_KEYS.items()
         }
         record["basename"] = Path(sample["image_path"]).stem
+        # 参数评分门:真实事件看 param_reliable(低SNR/离群标签不可靠);注入无此键默认 True;
+        # 训练不受影响(注入主导),只用于评估时决定哪些真实事件计入参数指标。
+        record["param_eval"] = bool(is_pos and meta.get("param_reliable", True))
     return record
 
 

@@ -50,7 +50,8 @@ def sample_params(rng, test=False):
     s1z = rng.uniform(-0.9, 0.9); s2z = rng.uniform(-0.9, 0.9)
     return dict(mass1=float(m1), mass2=float(m2), spin1z=float(s1z), spin2z=float(s2z),
                 chi_eff=float((m1 * s1z + m2 * s2z) / (m1 + m2)),
-                chirp_mass=float((m1 * m2) ** 0.6 / (m1 + m2) ** 0.2), q=float(m2 / m1),
+                chirp_mass=float((m1 * m2) ** 0.6 / (m1 + m2) ** 0.2),
+                total_mass=float(m1 + m2), q=float(m2 / m1),
                 inclination=float(np.arccos(rng.uniform(-1, 1))),
                 coa_phase=float(rng.uniform(0, 2 * np.pi)),
                 polarization=float(rng.uniform(0, 2 * np.pi)),

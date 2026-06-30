@@ -59,7 +59,9 @@ def load_items(test_path, image_root, strain_root, use_image, use_strain, param_
         base = rec.get("basename")
         strain = np.load(os.path.join(strain_root, base + ".npy")) if (use_strain and base) else None
         t = rec.get("targets") or {}
-        is_pos = all(t.get(n) is not None for n in param_names)
+        # 参数评分门:不可靠标签事件(低SNR/离群)param_eval=False → 不计入参数指标(仍计检测)
+        param_eval = rec.get("param_eval", True)
+        is_pos = param_eval and all(t.get(n) is not None for n in param_names)
         true_phys = [float(t[n]) for n in param_names] if is_pos else None
         items.append((prompt, img, strain, gold, true_phys))
     return items
@@ -81,9 +83,9 @@ def main():
     from models.posterior_head import GaussianPosteriorHead, PARAM_NAMES, standardize, invert
     from fusion_model import FusionVLM, repair_misquantized_linears
     from fusion_collator import FusionCollator
-    from config import CHIRP_MASS_BINS, DISTANCE_BINS, CHI_EFF_BINS, assign_bin
+    from config import CHIRP_MASS_BINS, TOTAL_MASS_BINS, CHI_EFF_BINS, assign_bin
 
-    BINS = {"chirp_mass": CHIRP_MASS_BINS, "distance": DISTANCE_BINS, "chi_eff": CHI_EFF_BINS}
+    BINS = {"chirp_mass": CHIRP_MASS_BINS, "total_mass": TOTAL_MASS_BINS, "chi_eff": CHI_EFF_BINS}
 
     adp = Path(args.adapter)
     meta = json.loads((adp / "fusion_meta.json").read_text())
@@ -214,16 +216,40 @@ def main():
                 "n_bins": len(bins), "chance": round(1.0 / len(bins), 4),
             }
 
+    # 派生分量质量 m1/m2/q(从 chirp+total),看分量质量恢复(预期 chirp 紧、分量松)。
+    # 真值与预测都经同一反演,公平对比。
+    derived = {}
+    if true_phys_l and "chirp_mass" in PARAM_NAMES and "total_mass" in PARAM_NAMES:
+        ci, ti = PARAM_NAMES.index("chirp_mass"), PARAM_NAMES.index("total_mass")
+
+        def _derive(mc, mt):
+            eta = np.clip((mc / np.clip(mt, 1e-6, None)) ** (5.0 / 3.0), 1e-6, 0.25)
+            disc = np.sqrt(np.clip(1.0 - 4.0 * eta, 0.0, None))
+            m1d = mt * (1.0 + disc) / 2.0
+            m2d = mt * (1.0 - disc) / 2.0
+            return m1d, m2d, m2d / np.clip(m1d, 1e-6, None)
+
+        m1p, m2p, qp = _derive(median_phys[:, ci], median_phys[:, ti])
+        m1t, m2t, qt = _derive(tp[:, ci], tp[:, ti])
+        derived = {
+            "mass1": {"mae": round(float(np.mean(np.abs(m1p - m1t))), 4)},
+            "mass2": {"mae": round(float(np.mean(np.abs(m2p - m2t))), 4)},
+            "mass_ratio": {"mae": round(float(np.mean(np.abs(qp - qt))), 4)},
+        }
+
     report = {"use_image": use_image, "use_strain": use_strain, "model_family": family, "n": len(yt),
               "detection": {"roc_auc": round(roc_auc, 4), "pr_auc": round(pr_auc, 4), "operating_points": op},
-              "params_on_true_positives": {"n_pos": len(true_phys_l), **params_report}}
+              "params_on_true_positives": {"n_pos": len(true_phys_l), **params_report},
+              "derived_component_masses": derived}
     (adp / "unified_eval.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
     print("\n=== 统一评估 ===")
     print(f"检测 ROC-AUC={roc_auc:.4f} PR-AUC={pr_auc:.4f}  R@0.5={op['default_0.5']['recall']} R@FPR5%={op['fpr<=0.05']['recall']}")
-    print(f"参数(真实正样本 n={len(true_phys_l)};对照 E2 exact: distance .442 / chirp_mass .239 / chi_eff .265):")
+    print(f"参数(可靠标签真实正样本 n={len(true_phys_l)};对照 E2-old exact: chirp_mass .239 / chi_eff .265):")
     for name, m in params_report.items():
         print(f"  {name:11s} NLL={m['nll']:.3f} MAE={m['mae']:.3f} bin-exact={m['exact_bin_acc']:.3f}(随机{m['chance']}) "
               f"adj={m['adjacent_bin_acc']:.3f} cov50={m['coverage_50']:.2f} cov90={m['coverage_90']:.2f}")
+    if derived:
+        print(f"派生分量质量 MAE: m1={derived['mass1']['mae']} m2={derived['mass2']['mae']} q={derived['mass_ratio']['mae']}")
     print(f"写入 {adp}/unified_eval.json")
 
 

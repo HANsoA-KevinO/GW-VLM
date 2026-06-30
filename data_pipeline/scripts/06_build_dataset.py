@@ -117,10 +117,14 @@ def build_dataset(spectro_dir=SPECTROGRAMS_DIR) -> list[dict]:
                 "jitter_idx": j_idx,
                 "metadata": {
                     "kind": event["kind"],
-                    "chirp_mass": event["chirp_mass"],
-                    "luminosity_distance": event["luminosity_distance"],
+                    "chirp_mass_det": event["chirp_mass_det"],   # detector-frame 目标
+                    "total_mass_det": event["total_mass_det"],   # detector-frame 目标
                     "chi_eff": event["chi_eff"],
                     "snr": event["snr"],
+                    "redshift": event.get("redshift"),
+                    "luminosity_distance": event["luminosity_distance"],  # 参考,非目标
+                    "chirp_mass_source": event["chirp_mass"],            # 参考
+                    "param_reliable": event.get("param_reliable", True),  # 参数评分用
                 },
             })
             continue

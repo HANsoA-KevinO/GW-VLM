@@ -64,9 +64,12 @@ def main():
             seg = w.crop(center - WINDOW_SECONDS / 2, center + WINDOW_SECONDS / 2)
             np.save(STRAIN_ARRAYS / f"{stem}.npy",
                     fix_length(np.asarray(seg.value, dtype=np.float32), N_SAMPLES))
-            # sidecar(06 读)
-            json.dump({"chirp_mass": rec["chirp_mass"], "luminosity_distance": rec["distance"],
-                       "chi_eff": rec["chi_eff"], "snr": rec["snr"], "mass1": rec["mass1"],
+            # sidecar(06 读)。注入无红移→采样质量即 detector-frame;直接当 _det 目标。
+            # total_mass 旧 manifest 可能没有 → 用 mass1+mass2 补(向后兼容)。
+            rec_tm = rec.get("total_mass", rec["mass1"] + rec["mass2"])
+            json.dump({"chirp_mass_det": rec["chirp_mass"], "total_mass_det": rec_tm,
+                       "chi_eff": rec["chi_eff"], "snr": rec["snr"],
+                       "luminosity_distance": rec["distance"], "mass1": rec["mass1"],
                        "mass2": rec["mass2"], "approx": "IMRPhenomXPHM"},
                       open(SPECTRO_VIRIDIS / f"{stem}.json", "w"))
             ok += 1
