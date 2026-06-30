@@ -8,16 +8,18 @@ cd "$HOME/code/GW-VLM" || exit 1
 exec > output/noise_expand.log 2>&1
 FILT='Warning|IERS|astropy|finals|urlopen|pkg-config|NO_PKGCONFIG|WARNING'
 
-echo "===== 0) 清理旧噪声渲染(raw_noise 保留,03b skip复用)$(date +%T) ====="
+echo "===== 0) 清理旧注入+旧噪声渲染(raw_noise/raw_strain 保留,03b skip复用)$(date +%T) ====="
 rm -f output/spectrograms_viridis/noise_*.png output/strain_arrays/noise_*.npy
+rm -f output/spectrograms_viridis/inject_*.png output/spectrograms_viridis/inject_*.json output/strain_arrays/inject_*.npy
+rm -f output/raw_strain_inject/inject_*.hdf5 output/injections_manifest.jsonl
 
-echo "===== 1) 03b 拉噪声池 injbg90 + neg200 $(date +%T) ====="
-.venv-render/bin/python data_pipeline/scripts/03b_fetch_noise_pool.py --n-injbg 90 --n-neg 200 \
+echo "===== 1) 03b 拉噪声池 injbg90 + neg400(配 ~8800 负样本)$(date +%T) ====="
+.venv-render/bin/python data_pipeline/scripts/03b_fetch_noise_pool.py --n-injbg 90 --n-neg 400 \
   2>&1 | grep -vE "$FILT" || { echo "03b_FAIL"; exit 1; }
 NSEG=$(wc -l < output/noise_pool_manifest.jsonl); echo "噪声段(H1+L1齐全) $NSEG"
 
-echo "===== 2) 04 注入(.venv-inject,真实host+injbg背景)$(date +%T) ====="
-.venv-inject/bin/python data_pipeline/scripts/04_inject_signals.py --n 2400 \
+echo "===== 2) 04 注入(均匀采样 flat,真实host+injbg背景,目标~4400事件)$(date +%T) ====="
+.venv-inject/bin/python data_pipeline/scripts/04_inject_signals.py --n 6500 \
   2>&1 | grep -vE "$FILT" | tail -12 || { echo "04_FAIL"; exit 1; }
 E=$(wc -l < output/injections_manifest.jsonl); echo "注入事件 $E"
 
@@ -42,6 +44,18 @@ echo "===== 7) 08 导出 e5(unified)+ e1(detection_only)$(date +%T) ====="
   --image-base output/spectrograms_viridis 2>&1 | tail -3 || { echo "08U_FAIL"; exit 1; }
 .venv-render/bin/python data_pipeline/scripts/08_export_training_format.py --schema detection_only \
   --image-base output/spectrograms_viridis 2>&1 | tail -3 || { echo "08E1_FAIL"; exit 1; }
+
+echo "===== 7b) 重建 e5_real(真实-only,new-E2 用)$(date +%T) ====="
+.venv-render/bin/python -c "
+import json,pathlib
+src=pathlib.Path('output/training_data/e5'); dst=pathlib.Path('output/training_data/e5_real'); dst.mkdir(exist_ok=True,parents=True)
+n=0
+with open(dst/'train.jsonl','w') as o:
+    for l in open(src/'train.jsonl'):
+        if json.loads(l).get('basename','').startswith('GW'): o.write(l); n+=1
+for sp in ('val','test'): open(dst/f'{sp}.jsonl','w').write(open(src/f'{sp}.jsonl').read())
+print('e5_real train(real-only):', n)
+"
 
 echo "===== 8) 守卫 + 平衡 $(date +%T) ====="
 for sp in val test; do

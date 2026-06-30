@@ -36,18 +36,22 @@ MANIFEST = OUTPUT_DIR / "injections_manifest.jsonl"
 
 def sample_params(rng, test=False):
     if test:
-        stream, m1, m2 = "bbh", 35.0, 30.0     # 自检:清晰响 BBH
+        m1, m2, chi = 35.0, 30.0, 0.0          # 自检:清晰响 BBH
     else:
-        # BBH 为主(真实 GW 主体、波形完整、SNR 足);少量 NSBH 给低 chirp_mass bin 一些覆盖。
-        # 纯 BNS 因 f_lower 截断后 SNR≈0 几乎全被过滤,占比压低省算力。
-        stream = rng.choice(["bbh", "bns", "nsbh"], p=[0.85, 0.03, 0.12])
-        if stream == "bbh":
-            m1 = rng.uniform(5, 80); m2 = rng.uniform(5, m1)
-        elif stream == "bns":
-            m1 = rng.uniform(1.1, 3.0); m2 = rng.uniform(1.1, m1)
-        else:
-            m1 = rng.uniform(3, 15); m2 = rng.uniform(1.1, 3.0)
-    s1z = rng.uniform(-0.9, 0.9); s2z = rng.uniform(-0.9, 0.9)
+        # 均匀采【要预测的目标量】→ 拉平训练分布,逼模型读波形形态而非猜众数(回应
+        # new-E2 暴露的众数预测失败)。chirp 覆盖真实 detector-frame 范围(真实上到 131)。
+        # 拒采保物理:总质量/主星质量限在真实 detector 上限附近,剔掉高chirp+极端低q的非物理角。
+        m1, m2 = 30.0, 25.0
+        for _ in range(40):
+            chirp = rng.uniform(3.0, 135.0)
+            q = rng.uniform(0.15, 1.0)          # m2/m1,均匀
+            eta = q / (1.0 + q) ** 2            # 对称质量比
+            mtot = chirp / eta ** 0.6           # detector-frame 总质量
+            c1, c2 = mtot / (1.0 + q), mtot * q / (1.0 + q)
+            if mtot <= 400.0 and c1 <= 200.0:
+                m1, m2 = c1, c2; break
+        chi = rng.uniform(-0.6, 0.6)            # chi_eff 直接均匀(覆盖真实[-0.29,0.68])
+    s1z = s2z = float(chi)                       # 对齐自旋=chi_eff → chi_eff 精确均匀
     return dict(mass1=float(m1), mass2=float(m2), spin1z=float(s1z), spin2z=float(s2z),
                 chi_eff=float((m1 * s1z + m2 * s2z) / (m1 + m2)),
                 chirp_mass=float((m1 * m2) ** 0.6 / (m1 + m2) ** 0.2),
@@ -56,7 +60,7 @@ def sample_params(rng, test=False):
                 coa_phase=float(rng.uniform(0, 2 * np.pi)),
                 polarization=float(rng.uniform(0, 2 * np.pi)),
                 ra=float(rng.uniform(0, 2 * np.pi)),
-                dec=float(np.arcsin(rng.uniform(-1, 1))), stream=stream)
+                dec=float(np.arcsin(rng.uniform(-1, 1))), stream="flat")
 
 
 def sample_target_snr(rng):
