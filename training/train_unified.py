@@ -40,50 +40,62 @@ def compute_norm_stats(jsonl):
     return _cns(np.asarray(vals, dtype=float))
 
 
-def build_dataset(jsonl, image_root, strain_root, use_image, use_strain, stats, max_samples=None):
+def _make_example(rec, image_root, strain_root, use_image, use_strain, stats):
+    """把一条 json 记录 → 训练样本(加载图+应变)。供惰性数据集按需调用。"""
     import numpy as np
     from PIL import Image
     from models.posterior_head import PARAM_NAMES, standardize
-    rows = []
-    for i, line in enumerate(open(jsonl)):
-        if max_samples is not None and i >= max_samples:
-            break
-        rec = json.loads(line)
-        msgs = rec["messages"]
-        new_msgs = []
-        for m in msgs:
-            c = m["content"]
-            if isinstance(c, list):
-                if use_image:
-                    nc = []
-                    for part in c:
-                        if part.get("type") == "image":
-                            p = part["image"]
-                            p = p if os.path.isabs(p) else os.path.join(image_root, p)
-                            nc.append({"type": "image", "image": Image.open(p).convert("RGB")})
-                        else:
-                            nc.append(part)
-                    new_msgs.append({"role": m["role"], "content": nc})
-                else:
-                    new_msgs.append({"role": m["role"],
-                                     "content": [{"type": "text", "text": "Analyze the gravitational-wave data."}]})
+    new_msgs = []
+    for m in rec["messages"]:
+        c = m["content"]
+        if isinstance(c, list):
+            if use_image:
+                nc = []
+                for part in c:
+                    if part.get("type") == "image":
+                        p = part["image"]
+                        p = p if os.path.isabs(p) else os.path.join(image_root, p)
+                        nc.append({"type": "image", "image": Image.open(p).convert("RGB")})
+                    else:
+                        nc.append(part)
+                new_msgs.append({"role": m["role"], "content": nc})
             else:
-                new_msgs.append(m)
-        ex = {"messages": new_msgs,
-              "images": ([im["image"] for mm in new_msgs if isinstance(mm["content"], list)
-                          for im in mm["content"] if im.get("type") == "image"] if use_image else None),
-              "use_strain": use_strain}
-        base = rec.get("basename")
-        if use_strain and base:
-            ex["strain"] = np.load(os.path.join(strain_root, base + ".npy"))
-        # 后验头目标:标准化 z(NaN 表示负样本无参数)
-        t = rec.get("targets") or {}
-        is_pos = all(t.get(n) is not None for n in PARAM_NAMES)
-        phys = np.array([[float(t[n]) if is_pos else np.nan for n in PARAM_NAMES]], dtype=float)
-        ex["param_target"] = standardize(phys, stats)[0].astype("float32")
-        ex["param_valid"] = bool(is_pos)
-        rows.append(ex)
-    return rows
+                new_msgs.append({"role": m["role"],
+                                 "content": [{"type": "text", "text": "Analyze the gravitational-wave data."}]})
+        else:
+            new_msgs.append(m)
+    ex = {"messages": new_msgs,
+          "images": ([im["image"] for mm in new_msgs if isinstance(mm["content"], list)
+                      for im in mm["content"] if im.get("type") == "image"] if use_image else None),
+          "use_strain": use_strain}
+    base = rec.get("basename")
+    if use_strain and base:
+        ex["strain"] = np.load(os.path.join(strain_root, base + ".npy"))
+    # 后验头目标:标准化 z(NaN 表示负样本无参数)
+    t = rec.get("targets") or {}
+    is_pos = all(t.get(n) is not None for n in PARAM_NAMES)
+    phys = np.array([[float(t[n]) if is_pos else np.nan for n in PARAM_NAMES]], dtype=float)
+    ex["param_target"] = standardize(phys, stats)[0].astype("float32")
+    ex["param_valid"] = bool(is_pos)
+    return ex
+
+
+class LazyFusionDataset:
+    """惰性数据集:只存解析后的 json 记录(轻),图/应变在 __getitem__ 按需加载。
+    避免把全部图预加载进内存(26550 张 × ~3MB ≈ 80GB → 统一内存 OOM,E4 崩因)。"""
+    def __init__(self, jsonl, image_root, strain_root, use_image, use_strain, stats, max_samples=None):
+        self.recs = []
+        for i, line in enumerate(open(jsonl)):
+            if max_samples is not None and i >= max_samples:
+                break
+            self.recs.append(json.loads(line))
+        self._args = (image_root, strain_root, use_image, use_strain, stats)
+
+    def __len__(self):
+        return len(self.recs)
+
+    def __getitem__(self, i):
+        return _make_example(self.recs[i], *self._args)
 
 
 def main():
@@ -196,9 +208,10 @@ def main():
     pad_id = processor.tokenizer.pad_token_id or processor.tokenizer.eos_token_id
     collator = FusionCollator(processor, n_tokens, img_tok, pad_id,
                               enable_thinking=cfg.get("enable_thinking", False), family=family)
-    ds = build_dataset(train_jsonl, cfg["image_root"], cfg["strain_root"],
-                       use_image, use_strain, stats, args.max_samples)
-    npos = sum(1 for e in ds if e["param_valid"])
+    ds = LazyFusionDataset(train_jsonl, cfg["image_root"], cfg["strain_root"],
+                           use_image, use_strain, stats, args.max_samples)
+    # 从轻量记录数正样本(不加载图,避免 OOM)
+    npos = sum(1 for r in ds.recs if all((r.get("targets") or {}).get(n) is not None for n in PARAM_NAMES))
     print(f"[unified] 训练样本 {len(ds)}(正 {npos})  hidden={hidden} img_tok={img_tok}", flush=True)
     nw = int(cfg.get("num_workers", 0))
     dl = DataLoader(ds, batch_size=cfg["batch_size"], shuffle=True, collate_fn=collator,
